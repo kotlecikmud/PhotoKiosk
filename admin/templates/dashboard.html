@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — PhotoKiosk Admin{% endblock %}
+{% block content %}
+<h1 style="font-size: 26px; margin-bottom: 24px;">System Overview</h1>
+
+<div class="grid-stats">
+  <div class="stat-card">
+    <div style="color: var(--text-muted);">Total Orders</div>
+    <div class="stat-val">{{ total_orders }}</div>
+  </div>
+  <div class="stat-card">
+    <div style="color: var(--text-muted);">Completed Orders</div>
+    <div class="stat-val" style="color: var(--success);">{{ completed_orders }}</div>
+  </div>
+  <div class="stat-card">
+    <div style="color: var(--text-muted);">Disk Available</div>
+    <div class="stat-val" style="font-size: 22px;">{{ disk_free_gb }} GB</div>
+  </div>
+  <div class="stat-card">
+    <div style="color: var(--text-muted);">Active Print Sizes</div>
+    <div class="stat-val">{{ active_sizes }}</div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Recent Orders</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Order ID</th>
+        <th>Created</th>
+        <th>Prints</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for o in recent_orders %}
+      <tr>
+        <td><strong>{{ o.order_id }}</strong></td>
+        <td>{{ o.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td>{{ o.total_prints }}</td>
+        <td>
+          <span class="badge {% if o.status == 'COMPLETED' %}badge-success{% elif o.status == 'FAILED' %}badge-danger{% else %}badge-pending{% endif %}">
+            {{ o.status }}
+          </span>
+        </td>
+        <td><a href="/admin/orders/{{ o.order_id }}" style="color: var(--primary); text-decoration: none;">View Details</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No orders recorded yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

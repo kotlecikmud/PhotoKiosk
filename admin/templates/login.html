@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}PhotoKiosk Admin — Login{% endblock %}
+{% block content %}
+<div style="max-width: 420px; margin: 80px auto;">
+  <div class="card">
+    <h2 style="margin-bottom: 8px;">Administrator Login</h2>
+    <p style="color: var(--text-muted); margin-bottom: 24px; font-size: 14px;">Please authenticate to manage kiosk settings.</p>
+    {% if error %}
+    <div class="alert alert-danger">{{ error }}</div>
+    {% endif %}
+    {% if message %}
+    <div class="alert alert-success">{{ message }}</div>
+    {% endif %}
+    <form method="POST" action="/admin/login">
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" name="password" required autofocus placeholder="Enter administrator password">
+      </div>
+      <button type="submit" style="width: 100%; margin-top: 8px;">Sign In</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

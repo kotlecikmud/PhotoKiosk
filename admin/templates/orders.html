@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Orders — PhotoKiosk Admin{% endblock %}
+{% block content %}
+<h1 style="font-size: 26px; margin-bottom: 24px;">Order Management</h1>
+
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Order ID</th>
+        <th>Created At</th>
+        <th>Total Items</th>
+        <th>Total Prints</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for o in orders %}
+      <tr>
+        <td><strong>{{ o.order_id }}</strong></td>
+        <td>{{ o.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+        <td>{{ o.total_items }}</td>
+        <td>{{ o.total_prints }}</td>
+        <td>
+          <span class="badge {% if o.status == 'COMPLETED' %}badge-success{% elif o.status == 'FAILED' %}badge-danger{% else %}badge-pending{% endif %}">
+            {{ o.status }}
+          </span>
+        </td>
+        <td>
+          <a href="/admin/orders/{{ o.order_id }}" style="color: var(--primary); text-decoration: none; font-weight: 600;">Inspect</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No orders found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

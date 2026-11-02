@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}File Manager — PhotoKiosk Admin{% endblock %}
+{% block content %}
+<h1 style="font-size: 26px; margin-bottom: 24px;">Storage & File Manager</h1>
+
+<div class="card">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+    <h3>Shared Storage Directory ({{ current_path }})</h3>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Size</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in files %}
+      <tr>
+        <td><strong>{{ f.name }}</strong></td>
+        <td>{{ f.type }}</td>
+        <td>{{ f.size_display }}</td>
+        <td>
+          <form method="POST" action="/admin/files/delete" style="display: inline;" onsubmit="return confirm('Delete this file?');">
+            <input type="hidden" name="filepath" value="{{ f.rel_path }}">
+            <button type="submit" class="btn-sm btn-danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Shared photo folder is currently empty.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

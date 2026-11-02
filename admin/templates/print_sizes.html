@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Print Sizes — PhotoKiosk Admin{% endblock %}
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+  <h1 style="font-size: 26px;">Print Sizes & Finishes</h1>
+</div>
+
+<div class="card">
+  <h3>Add New Print Size</h3>
+  <form method="POST" action="/admin/print-sizes" style="display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;">
+    <div class="form-group" style="margin: 0;">
+      <label>Size Name (e.g. 10x15)</label>
+      <input type="text" name="name" required placeholder="10x15">
+    </div>
+    <div class="form-group" style="margin: 0;">
+      <label>Width (mm)</label>
+      <input type="number" step="0.1" name="width_mm" required placeholder="102.0">
+    </div>
+    <div class="form-group" style="margin: 0;">
+      <label>Height (mm)</label>
+      <input type="number" step="0.1" name="height_mm" required placeholder="152.0">
+    </div>
+    <button type="submit">Add Size</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Configured Print Sizes</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Width (mm)</th>
+        <th>Height (mm)</th>
+        <th>Pixels @ 300 DPI</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in sizes %}
+      <tr>
+        <td><strong>{{ s.name }}</strong></td>
+        <td>{{ s.width_mm }} mm</td>
+        <td>{{ s.height_mm }} mm</td>
+        <td>{{ ((s.width_mm / 25.4) * 300)|round|int }} × {{ ((s.height_mm / 25.4) * 300)|round|int }} px</td>
+        <td>
+          <span class="badge {% if s.is_active %}badge-success{% else %}badge-danger{% endif %}">
+            {% if s.is_active %}ACTIVE{% else %}DISABLED{% endif %}
+          </span>
+        </td>
+        <td>
+          <form method="POST" action="/admin/print-sizes/{{ s.id }}/toggle" style="display: inline;">
+            <button type="submit" class="btn-sm">Toggle</button>
+          </form>
+          <form method="POST" action="/admin/print-sizes/{{ s.id }}/delete" style="display: inline;" onsubmit="return confirm('Delete this format?');">
+            <button type="submit" class="btn-sm btn-danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Order {{ order.order_id }} — PhotoKiosk Admin{% endblock %}
+{% block content %}
+<div style="margin-bottom: 20px;">
+  <a href="/admin/orders" style="color: var(--text-muted); text-decoration: none;">&larr; Back to Orders</a>
+</div>
+
+<h1 style="font-size: 24px; margin-bottom: 12px;">Order {{ order.order_id }}</h1>
+<div style="margin-bottom: 24px;">
+  <span class="badge {% if order.status == 'COMPLETED' %}badge-success{% elif order.status == 'FAILED' %}badge-danger{% else %}badge-pending{% endif %}">
+    {{ order.status }}
+  </span>
+  <span style="color: var(--text-muted); margin-left: 12px;">Created: {{ order.created_at.strftime('%Y-%m-%d %H:%M:%S') }} UTC</span>
+</div>
+
+{% if order.error_message %}
+<div class="alert alert-danger">
+  <strong>Failure Diagnosis:</strong> {{ order.error_message }}
+</div>
+{% endif %}
+
+<div class="card">
+  <h3>Ordered Print Items</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Original File</th>
+        <th>Format</th>
+        <th>Finish</th>
+        <th>Crop Mode</th>
+        <th>Quantity</th>
+        <th>Generated Output Path</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in order.items %}
+      <tr>
+        <td><strong>{{ item.original_filename }}</strong></td>
+        <td>{{ item.print_size_name }}</td>
+        <td>{{ item.paper_finish }}</td>
+        <td>{{ item.crop_mode }}</td>
+        <td>x{{ item.quantity }}</td>
+        <td style="font-family: monospace; font-size: 12px; color: var(--text-muted);">{{ item.output_rel_path }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if manifest_content %}
+<div class="card">
+  <h3>Order Manifest (order.json)</h3>
+  <pre style="background: #0d1017; padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 13px; color: #a5b4fc;">{{ manifest_content }}</pre>
+</div>
+{% endif %}
+{% endblock %}

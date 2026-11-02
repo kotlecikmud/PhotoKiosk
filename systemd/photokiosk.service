@@ -1,0 +1,20 @@
+[Unit]
+Description=PhotoKiosk Fullscreen Touchscreen GUI
+After=photokiosk-backend.service graphical.target
+Wants=photokiosk-backend.service
+
+[Service]
+Type=simple
+User=kiosk
+Group=kiosk
+WorkingDirectory=/opt/photokiosk
+Environment="DISPLAY=:0"
+Environment="PYTHONPATH=/opt/photokiosk"
+ExecStart=/opt/photokiosk/venv/bin/python3 main.py --mode gui --fullscreen
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=graphical.target

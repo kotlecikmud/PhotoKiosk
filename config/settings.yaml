@@ -1,0 +1,38 @@
+app_name: "PhotoKiosk"
+version: "0.1.0"
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  admin_path: "/admin"
+  session_timeout_minutes: 60
+  max_failed_logins: 5
+  lockout_minutes: 15
+
+paths:
+  base_dir: "storage"
+  originals_dir: "storage/originals"
+  thumbnails_dir: "storage/thumbnails"
+  orders_dir: "storage/orders"
+  shared_dir: "storage/shared"
+  database_url: "sqlite:///storage/photokiosk.db"
+
+imaging:
+  default_dpi: 300
+  border_width_mm: 4.0
+  auto_orientation_matching: true
+  resampling_filter: "LANCZOS"
+  icc_handling_enabled: true
+
+kiosk:
+  fullscreen: true
+  touchscreen_mode: true
+  auto_reset_timeout_seconds: 60
+  supported_extensions:
+    - ".jpg"
+    - ".jpeg"
+    - ".png"
+    - ".tif"
+    - ".tiff"
+    - ".webp"
+    - ".bmp"

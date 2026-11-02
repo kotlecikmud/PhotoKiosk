@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}System Settings — PhotoKiosk Admin{% endblock %}
+{% block content %}
+<h1 style="font-size: 26px; margin-bottom: 24px;">System Settings</h1>
+
+{% if success_msg %}
+<div class="alert alert-success">{{ success_msg }}</div>
+{% endif %}
+
+<div class="card">
+  <h3>Print & Image Processing Configuration</h3>
+  <form method="POST" action="/admin/settings" style="max-width: 500px;">
+    <div class="form-group">
+      <label>Default Output DPI</label>
+      <input type="number" name="default_dpi" value="{{ settings.get('default_dpi', '300') }}" required>
+    </div>
+    <div class="form-group">
+      <label>Border Width (mm)</label>
+      <input type="number" step="0.5" name="border_width_mm" value="{{ settings.get('border_width_mm', '4.0') }}" required>
+    </div>
+    <div class="form-group">
+      <label>Auto-Orientation Matching</label>
+      <select name="auto_orientation_matching">
+        <option value="true" {% if settings.get('auto_orientation_matching') == 'true' %}selected{% endif %}>Enabled (Match photo aspect ratio to paper)</option>
+        <option value="false" {% if settings.get('auto_orientation_matching') == 'false' %}selected{% endif %}>Disabled (Keep paper orientation fixed)</option>
+      </select>
+    </div>
+    <button type="submit" style="margin-top: 12px;">Save Settings</button>
+  </form>
+</div>
+
+<div class="card" style="max-width: 500px;">
+  <h3>Change Administrator Password</h3>
+  <form method="POST" action="/admin/change-password">
+    <div class="form-group">
+      <label>Current Password</label>
+      <input type="password" name="current_password" required>
+    </div>
+    <div class="form-group">
+      <label>New Password (min 8 chars)</label>
+      <input type="password" name="new_password" required minlength="8">
+    </div>
+    <div class="form-group">
+      <label>Confirm New Password</label>
+      <input type="password" name="confirm_password" required minlength="8">
+    </div>
+    <button type="submit" style="margin-top: 12px;">Update Password</button>
+  </form>
+</div>
+{% endblock %}
