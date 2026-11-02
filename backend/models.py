@@ -88,3 +88,17 @@ class PreviewRequest(BaseModel):
     crop_mode: str
     print_size_name: str
     border_width_mm: float = 4.0
+
+
+class ScannerStatusResponse(BaseModel):
+    device: str
+    connection_status: str
+    scan_status: str
+    current_path: str
+    images_found: int
+    videos_found: int
+    files_scanned: int
+    folders_scanned: int
+    errors: int
+    images_by_extension: Dict[str, int] = {}
+    session_id: int = 0

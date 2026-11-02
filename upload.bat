@@ -1,7 +1,7 @@
 @echo off
 
 git add .
-git commit -m 'init'
+git commit -m '0.0.1'
 git push
 
 echo Repo pushed

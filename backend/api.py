@@ -1,10 +1,12 @@
 """REST API endpoints for Kiosk GUI and remote integration."""
 import os
 import io
+import json
+import asyncio
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import FileResponse, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from sqlalchemy.orm import Session
 from PIL import Image
 
@@ -16,11 +18,13 @@ from backend.models import (
     OrderSummaryResponse,
     PreviewRequest,
     SystemSettingsSchema,
+    ScannerStatusResponse,
 )
 from backend.orders import OrderProcessor, generate_order_id
 from backend.library import scan_directory_for_photos
 from backend.thumbnails import ThumbnailCache
 from imaging.preview import generate_preview
+from devices.scanner import authoritative_scanner, ScanStatus
 
 api_router = APIRouter(prefix="/api/v1", tags=["kiosk-api"])
 thumb_cache = ThumbnailCache()
@@ -167,3 +171,68 @@ def get_order_details(order_id: str, db: Session = Depends(get_db)):
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     return order
+
+
+# =========================================================================
+# iPhone Scanner Endpoints
+# =========================================================================
+
+@api_router.get("/devices/scanner/status", response_model=ScannerStatusResponse)
+def get_scanner_status():
+    """Returns the current authoritative scanner state."""
+    return authoritative_scanner.get_state()
+
+
+@api_router.post("/devices/scanner/rescan", response_model=ScannerStatusResponse)
+def request_scanner_rescan():
+    """Explicitly triggers a rescan of the connected iPhone."""
+    try:
+        updated_state = authoritative_scanner.request_rescan()
+        return updated_state
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@api_router.get("/devices/scanner/events")
+async def scanner_events_stream(request: Request):
+    """
+    Server-Sent Events (SSE) stream for live scanner updates.
+    Yields events with event names and JSON data snapshots.
+    """
+    event_queue: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_running_loop()
+
+    def subscriber(event_name: str, state_snapshot: Dict[str, Any]):
+        loop.call_soon_threadsafe(event_queue.put_nowait, (event_name, state_snapshot))
+
+    # Send initial state immediately
+    current_state = authoritative_scanner.get_state()
+    event_queue.put_nowait(("status_sync", current_state))
+
+    unsubscribe = authoritative_scanner.subscribe(subscriber)
+
+    async def event_generator():
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    event_name, state = await asyncio.wait_for(event_queue.get(), timeout=15.0)
+                    yield f"event: {event_name}\ndata: {json.dumps(state)}\n\n"
+                except asyncio.TimeoutError:
+                    # Keep-alive comment
+                    yield ": ping\n\n"
+        finally:
+            unsubscribe()
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
