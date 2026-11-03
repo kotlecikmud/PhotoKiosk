@@ -50,13 +50,13 @@
   {% if is_authenticated %}
   <div class="sidebar">
     <h2>PhotoKiosk Admin</h2>
-    <a href="/admin" class="{% if active_tab == 'dashboard' %}active{% endif %}">Dashboard</a>
-    <a href="/admin/print-sizes" class="{% if active_tab == 'print-sizes' %}active{% endif %}">Print Sizes</a>
-    <a href="/admin/orders" class="{% if active_tab == 'orders' %}active{% endif %}">Orders</a>
-    <a href="/admin/files" class="{% if active_tab == 'files' %}active{% endif %}">File Manager</a>
-    <a href="/admin/settings" class="{% if active_tab == 'settings' %}active{% endif %}">Settings</a>
+    <a href="/admin" class="{% if active_tab == 'dashboard' %}active{% endif %}">{{ t('admin.nav_dashboard') }}</a>
+    <a href="/admin/print-sizes" class="{% if active_tab == 'print-sizes' %}active{% endif %}">{{ t('admin.nav_print_sizes') }}</a>
+    <a href="/admin/orders" class="{% if active_tab == 'orders' %}active{% endif %}">{{ t('admin.nav_orders') }}</a>
+    <a href="/admin/files" class="{% if active_tab == 'files' %}active{% endif %}">{{ t('admin.nav_files') }}</a>
+    <a href="/admin/settings" class="{% if active_tab == 'settings' %}active{% endif %}">{{ t('admin.nav_settings') }}</a>
     <div style="margin-top: auto;">
-      <a href="/admin/logout" style="color: var(--danger);">Logout</a>
+      <a href="/admin/logout" style="color: var(--danger);">{{ t('admin.nav_logout') }}</a>
     </div>
   </div>
   {% endif %}

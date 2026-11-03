@@ -1,7 +1,7 @@
 """CustomTkinter PhotoKiosk Touchscreen Application Controller."""
 import os
 import customtkinter as ctk
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Set
 
 from gui.theme import COLORS, FONTS, set_active_theme
 from gui.screens.home import HomeScreen
@@ -33,6 +33,8 @@ class PhotoKioskApp(ctk.CTk):
         self.current_session_id: int = 1
         self.current_source_name: str = ""
         self.current_source_path: str = ""
+        self.session_photo_configs: Dict[str, Dict[str, Any]] = {}
+        self.session_selected_indices: Set[int] = set()
         self.configured_items: List[Dict[str, Any]] = []
 
         # Clean lingering temp sessions on startup
@@ -62,12 +64,19 @@ class PhotoKioskApp(ctk.CTk):
 
     def show_home_screen(self):
         self._clear_container()
+        # Reset session storage on returning to home screen (new session)
+        self.session_photo_configs = {}
+        self.session_selected_indices = set()
+        self.configured_items = []
         screen = HomeScreen(self.container, on_source_selected=self._on_source_selected)
         screen.pack(fill="both", expand=True)
 
     def _on_source_selected(self, source_name: str, source_path: str):
         self.current_source_name = source_name
         self.current_source_path = source_path
+        self.session_photo_configs = {}
+        self.session_selected_indices = set()
+        self.configured_items = []
         self.show_gallery_screen()
 
     def show_gallery_screen(self):
@@ -78,12 +87,18 @@ class PhotoKioskApp(ctk.CTk):
             source_path=self.current_source_path,
             session_id=self.current_session_id,
             on_back=self.show_home_screen,
-            on_proceed_to_summary=self._on_proceed_to_summary
+            on_proceed_to_summary=self._on_proceed_to_summary,
+            initial_photo_configs=self.session_photo_configs,
+            initial_selected_indices=self.session_selected_indices,
         )
         screen.pack(fill="both", expand=True)
 
-    def _on_proceed_to_summary(self, configured_items: List[Dict[str, Any]]):
+    def _on_proceed_to_summary(self, configured_items: List[Dict[str, Any]], photo_configs: Optional[Dict[str, Any]] = None, selected_indices: Optional[Set[int]] = None):
         self.configured_items = configured_items
+        if photo_configs is not None:
+            self.session_photo_configs = photo_configs
+        if selected_indices is not None:
+            self.session_selected_indices = set(selected_indices)
         self.show_order_summary_screen()
 
     def show_order_summary_screen(self):

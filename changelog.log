@@ -1,5 +1,41 @@
 # PhotoKiosk Changelog
 
+## [0.0.5] - 2026-11-03
+
+### Changed
+- **Gallery Ordering Stage Refactor**:
+  - **Enlarged Image Preview**: Removed the restrictive 320×240 thumbnail clamp, expanding preview generation up to responsive bounds (480×360 up to 700×500) filling the editor pane.
+  - **Dynamic Canvas Adjustment**: Preview canvas aspect ratio and physical dimensions now dynamically adapt in real-time to the active chosen print size card (e.g. 9×13, 10×15, 13×18, 15×21, 20×30, A4, or custom formats) with live format and dimension indicators.
+  - **Active Chosen Format Card**: Clicking or adjusting any print size card highlights it with a prominent accent border, sets it as the active format, and immediately re-renders the canvas to that card's aspect ratio and dimensions.
+  - **Print Size Card Removal**: Implemented dual remove buttons (a direct `✕` button on the card header and a dedicated remove button beneath the card), increased scroll container height to 280px to prevent button clipping, and enabled card removal down to zero with a clean empty state and `+ Add Size` trigger.
+
+## [0.0.4] - 2026-11-03
+
+### Added
+- **Polish & English Localization Architecture (i18n)**:
+  - Extensible JSON locale format in `config/locales/` (`en.json`, `pl.json`).
+  - Drop-in language support with strict integrity validation against reference keys.
+  - Active language switcher `LanguageToggle` available across all touchscreen kiosk screens, preserving chosen language across session completion and timeouts.
+  - Dedicated 'Language & Localization' configuration in Admin Settings displaying active language, loaded languages, and missing-key integrity error warnings.
+- **Backend CLI & Detailed Pending Order Inspection**:
+  - Command-line interface `main.py order create --dir <path>` for opening orders from image directories.
+  - `main.py order show <order_id> [-v]` and `main.py order list [--pending]` displaying itemized breakdowns of print quantities, formats, paper finishes, unit pricing, and totals.
+  - Detailed grouped breakdowns in Admin Web Panel order inspection.
+- **Shared Storage Order Access & Zip Download**:
+  - Completed order files (ORIGINALS, sorted crops, order manifest JSON) automatically copied to `storage/shared/orders/<order_id>` for network browsing, downloading, and deletion via File Manager.
+  - Added 'Download Order (.zip)' button on the order detail inspection page in Admin Web Panel.
+
+### Changed
+- **UI Nomenclature**:
+  - Removed 'submit and print' wording across kiosk UI, replacing it with 'Submit Order' / 'Złóż zamówienie' to accurately reflect server-side photo acquisition.
+
+### Fixed
+- **Gallery Configuration Persistence**:
+  - Preserved photo print counts, formats, paper types, and selected indices across screen transitions when navigating from Gallery to Order Summary and back.
+  - Prevented premature deletion of unselected session photos until final order submission.
+- **Services JSON Importer Filtering**:
+  - Excluded photo copy services (`(fotokopia)`) in addition to slide prints when parsing `services.json`.
+
 ## [0.0.3] - 2026-11-03
 
 ### Added

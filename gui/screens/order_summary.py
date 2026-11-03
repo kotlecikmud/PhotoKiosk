@@ -6,6 +6,8 @@ import customtkinter as ctk
 
 from gui.theme import FONTS, COLORS, TOUCH_SIZES
 from backend.database import get_db_engine, get_all_service_prices_map
+from backend.i18n import get_i18n, t
+from gui.language_toggle import LanguageToggle
 from sqlalchemy.orm import sessionmaker
 
 
@@ -21,6 +23,7 @@ class OrderSummaryScreen(ctk.CTkFrame):
         self.items = list(items)
         self.on_back = on_back
         self.on_confirm_order = on_confirm_order
+        self.i18n = get_i18n()
 
         # Load price map
         try:
@@ -36,15 +39,25 @@ class OrderSummaryScreen(ctk.CTkFrame):
             item["subtotal"] = item["unit_price"] * item["quantity"]
 
         self._build_ui()
+        self.i18n.subscribe(self._on_language_changed)
+
+    def _on_language_changed(self, lang: str):
+        if self.winfo_exists():
+            self._update_localized_texts()
+            self._render_view()
+
+    def destroy(self):
+        self.i18n.unsubscribe(self._on_language_changed)
+        super().destroy()
 
     def _build_ui(self):
         # Header
         top_bar = ctk.CTkFrame(self, fg_color="transparent")
         top_bar.pack(fill="x", padx=30, pady=(20, 10))
 
-        back_btn = ctk.CTkButton(
+        self.back_btn = ctk.CTkButton(
             top_bar,
-            text="← Edit Gallery",
+            text=t("order_summary.btn_back"),
             font=FONTS["button"],
             fg_color=COLORS["surface"],
             hover_color=COLORS["border"],
@@ -52,15 +65,19 @@ class OrderSummaryScreen(ctk.CTkFrame):
             height=TOUCH_SIZES["button_height"],
             command=self.on_back
         )
-        back_btn.pack(side="left")
+        self.back_btn.pack(side="left")
 
-        title = ctk.CTkLabel(
+        self.title_lbl = ctk.CTkLabel(
             top_bar,
-            text="Order Summary & Review",
+            text=t("order_summary.title"),
             font=FONTS["title"],
             text_color=COLORS["text"]
         )
-        title.pack(side="left", padx=20)
+        self.title_lbl.pack(side="left", padx=20)
+
+        # Language toggle on top right
+        self.lang_toggle = LanguageToggle(top_bar)
+        self.lang_toggle.pack(side="right")
 
         # Main body: Left groups summary, Right individual items list
         body = ctk.CTkFrame(self, fg_color="transparent")
@@ -73,13 +90,13 @@ class OrderSummaryScreen(ctk.CTkFrame):
         grouped_container = ctk.CTkFrame(body, fg_color=COLORS["bg_card"], corner_radius=12)
         grouped_container.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
 
-        g_title = ctk.CTkLabel(
+        self.g_title = ctk.CTkLabel(
             grouped_container,
-            text="Prints Grouped by Format & Paper",
+            text=t("order_summary.section_grouped"),
             font=FONTS["subtitle"],
             text_color=COLORS["primary"]
         )
-        g_title.pack(anchor="w", padx=16, pady=(16, 8))
+        self.g_title.pack(anchor="w", padx=16, pady=(16, 8))
 
         self.grouped_scroll = ctk.CTkScrollableFrame(grouped_container, fg_color="transparent")
         self.grouped_scroll.pack(fill="both", expand=True, padx=12, pady=(0, 12))
@@ -88,13 +105,13 @@ class OrderSummaryScreen(ctk.CTkFrame):
         items_box = ctk.CTkFrame(body, fg_color=COLORS["bg_card"], corner_radius=12)
         items_box.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
 
-        i_title = ctk.CTkLabel(
+        self.i_title = ctk.CTkLabel(
             items_box,
-            text="Individual Photographs",
+            text=t("order_summary.section_individual"),
             font=FONTS["subtitle"],
             text_color=COLORS["primary"]
         )
-        i_title.pack(anchor="w", padx=16, pady=(16, 8))
+        self.i_title.pack(anchor="w", padx=16, pady=(16, 8))
 
         self.items_container = ctk.CTkScrollableFrame(items_box, fg_color="transparent")
         self.items_container.pack(fill="both", expand=True, padx=12, pady=(0, 12))
@@ -121,7 +138,7 @@ class OrderSummaryScreen(ctk.CTkFrame):
 
         self.submit_btn = ctk.CTkButton(
             self.bottom_bar,
-            text="Submit Order & Print Files →",
+            text=t("order_summary.btn_submit"),
             font=FONTS["button"],
             fg_color=COLORS["success"],
             hover_color=COLORS["success_hover"],
@@ -132,6 +149,18 @@ class OrderSummaryScreen(ctk.CTkFrame):
         self.submit_btn.pack(side="right", padx=20)
 
         self._render_view()
+
+    def _update_localized_texts(self):
+        if hasattr(self, "back_btn") and self.back_btn.winfo_exists():
+            self.back_btn.configure(text=t("order_summary.btn_back"))
+        if hasattr(self, "title_lbl") and self.title_lbl.winfo_exists():
+            self.title_lbl.configure(text=t("order_summary.title"))
+        if hasattr(self, "g_title") and self.g_title.winfo_exists():
+            self.g_title.configure(text=t("order_summary.section_grouped"))
+        if hasattr(self, "i_title") and self.i_title.winfo_exists():
+            self.i_title.configure(text=t("order_summary.section_individual"))
+        if hasattr(self, "submit_btn") and self.submit_btn.winfo_exists():
+            self.submit_btn.configure(text=t("order_summary.btn_submit"))
 
     def _render_view(self):
         self._render_grouped_summary()
@@ -154,7 +183,7 @@ class OrderSummaryScreen(ctk.CTkFrame):
             groups[key]["items_count"] += 1
 
         if not groups:
-            empty_lbl = ctk.CTkLabel(self.grouped_scroll, text="No items configured.", font=FONTS["body"])
+            empty_lbl = ctk.CTkLabel(self.grouped_scroll, text=t("order_summary.empty_items"), font=FONTS["body"])
             empty_lbl.pack(pady=30)
             return
 
@@ -165,13 +194,16 @@ class OrderSummaryScreen(ctk.CTkFrame):
             info = ctk.CTkFrame(row, fg_color="transparent")
             info.pack(side="left", fill="both", expand=True, padx=12, pady=4)
 
-            title_txt = f"{size} {finish}"
+            finish_localized = t(f"paper_finishes.{finish.lower()}")
+            if finish_localized.startswith("paper_finishes."):
+                finish_localized = finish
+            title_txt = f"{size} {finish_localized}"
             lbl_title = ctk.CTkLabel(info, text=title_txt, font=FONTS["body_bold"], text_color=COLORS["text"])
             lbl_title.pack(anchor="w")
 
-            detail_txt = f"Total Prints: {data['count']} (from {data['items_count']} photos)"
+            detail_txt = t("order_summary.total_prints_group", count=data['count'], items=data['items_count'])
             if data["unit_price"] > 0:
-                detail_txt += f" @ {data['unit_price']:.2f} PLN/print"
+                detail_txt += f" @ {data['unit_price']:.2f} PLN"
             lbl_desc = ctk.CTkLabel(info, text=detail_txt, font=FONTS["small"], text_color=COLORS["text_muted"])
             lbl_desc.pack(anchor="w")
 
@@ -228,7 +260,7 @@ class OrderSummaryScreen(ctk.CTkFrame):
 
         self.total_lbl.configure(text=f"Total: {total_items} items ({total_prints} prints)")
         if grand_total_price > 0:
-            self.price_total_lbl.configure(text=f"Order Total: {grand_total_price:.2f} PLN")
+            self.price_total_lbl.configure(text=f"{grand_total_price:.2f} PLN")
         else:
             self.price_total_lbl.configure(text="")
 

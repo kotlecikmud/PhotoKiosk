@@ -15,6 +15,8 @@ from backend.thumbnails import ThumbnailCache
 from backend.database import get_db_engine, PrintSize, PaperFinish, get_all_service_prices_map
 from imaging.preview import generate_preview
 from devices.session_manager import get_temp_session_dir
+from backend.i18n import t, get_i18n
+from gui.language_toggle import LanguageToggle
 
 
 class GalleryScreen(ctk.CTkFrame):
@@ -25,7 +27,10 @@ class GalleryScreen(ctk.CTkFrame):
         source_path: str,
         session_id: int = 1,
         on_back: Callable[[], None] = None,
-        on_proceed_to_summary: Callable[[List[Dict[str, Any]]], None] = None
+        on_proceed_to_summary: Callable[[List[Dict[str, Any]], Dict[str, Any], Set[int]], None] = None,
+        initial_photo_configs: Optional[Dict[str, Dict[str, Any]]] = None,
+        initial_selected_indices: Optional[Set[int]] = None,
+        initial_session_card_sizes: Optional[List[str]] = None,
     ):
         super().__init__(parent, fg_color=COLORS["bg_dark"])
         self.source_name = source_name
@@ -35,7 +40,7 @@ class GalleryScreen(ctk.CTkFrame):
         self.on_proceed_to_summary = on_proceed_to_summary
 
         self.photos: List[Dict[str, Any]] = []
-        self.selected_indices: Set[int] = set()
+        self.selected_indices: Set[int] = set(initial_selected_indices) if initial_selected_indices else set()
         self.active_photo_idx: Optional[int] = None
         self.thumb_cache = ThumbnailCache()
 
@@ -57,14 +62,17 @@ class GalleryScreen(ctk.CTkFrame):
         self.finish_names = [f.name for f in self.active_finishes] or ["GLOSSY", "MATTE"]
 
         # Default formats list across session: starts with first 2 active print sizes
-        self.session_card_sizes: List[str] = self.size_names[:2] if len(self.size_names) >= 2 else list(self.size_names)
+        if initial_session_card_sizes:
+            self.session_card_sizes = list(initial_session_card_sizes)
+        else:
+            self.session_card_sizes = self.size_names[:2] if len(self.size_names) >= 2 else list(self.size_names)
 
         # Photo configurations:
         # photo_filepath -> {
         #    "crop_mode": "fill_in",
         #    "cards": [ {"size_name": s, "paper_type": self.finish_names[0], "count": 0}, ... ]
         # }
-        self.photo_configs: Dict[str, Dict[str, Any]] = {}
+        self.photo_configs: Dict[str, Dict[str, Any]] = dict(initial_photo_configs) if initial_photo_configs else {}
 
         # Track staged copies for background copy / cleanup
         # original_filepath -> staged_filepath
@@ -75,12 +83,28 @@ class GalleryScreen(ctk.CTkFrame):
         self.tile_checkboxes: Dict[int, ctk.CTkCheckBox] = {}
         self.tile_cb_vars: Dict[int, ctk.BooleanVar] = {}
 
+        # Active card index tracking per photo: filepath -> int
+        self.active_card_indices: Dict[str, int] = {}
+
         # Dropdown popup reference & timer
         self.dropdown_popup: Optional[ctk.CTkFrame] = None
         self.dropdown_timer_id: Optional[str] = None
 
         self._build_ui()
+        get_i18n().subscribe(self._on_locale_changed)
         self._load_photos_async()
+
+    def destroy(self):
+        try:
+            get_i18n().unsubscribe(self._on_locale_changed)
+        except Exception:
+            pass
+        super().destroy()
+
+    def _on_locale_changed(self, lang: str):
+        if self.winfo_exists():
+            self._update_localized_texts()
+            self._render_editor()
 
     def _get_price(self, size_name: str, paper_type: str) -> float:
         key = (size_name.strip().lower(), paper_type.strip().lower())
@@ -100,15 +124,45 @@ class GalleryScreen(ctk.CTkFrame):
                 "crop_mode": "fill_in",
                 "cards": cards
             }
+        if filepath not in self.active_card_indices:
+            self.active_card_indices[filepath] = 0
+
+    def _get_active_card_idx(self, filepath: str) -> int:
+        cfg = self.photo_configs.get(filepath, {})
+        cards = cfg.get("cards", [])
+        if not cards:
+            return 0
+        idx = self.active_card_indices.get(filepath, 0)
+        if idx >= len(cards) or idx < 0:
+            idx = 0
+            self.active_card_indices[filepath] = 0
+        return idx
+
+    def _set_active_card_idx(self, filepath: str, idx: int):
+        cfg = self.photo_configs.get(filepath, {})
+        cards = cfg.get("cards", [])
+        if not cards:
+            self.active_card_indices[filepath] = 0
+        else:
+            self.active_card_indices[filepath] = max(0, min(idx, len(cards) - 1))
+
+    def _select_active_card(self, card_idx: int):
+        self._close_dropdown_popup()
+        if self.active_photo_idx is None or not self.photos:
+            return
+        photo = self.photos[self.active_photo_idx]
+        self._set_active_card_idx(photo["filepath"], card_idx)
+        self._render_size_cards()
+        self._update_editor_preview()
 
     def _build_ui(self):
         # 1. Top Bar spanning full width
         self.top_bar = ctk.CTkFrame(self, fg_color="transparent")
         self.top_bar.pack(fill="x", padx=20, pady=(15, 10))
 
-        back_btn = ctk.CTkButton(
+        self.back_btn = ctk.CTkButton(
             self.top_bar,
-            text="← Sources",
+            text=f"← {t('gallery.back_to_sources')}",
             font=FONTS["button"],
             fg_color=COLORS["surface"],
             hover_color=COLORS["border"],
@@ -116,31 +170,31 @@ class GalleryScreen(ctk.CTkFrame):
             height=TOUCH_SIZES["button_height"],
             command=self.on_back
         )
-        back_btn.pack(side="left")
+        self.back_btn.pack(side="left")
 
-        title_lbl = ctk.CTkLabel(
+        self.title_lbl = ctk.CTkLabel(
             self.top_bar,
-            text=f"Browsing: {self.source_name}",
+            text=f"{t('gallery.title')}: {self.source_name}",
             font=FONTS["title"],
             text_color=COLORS["text"]
         )
-        title_lbl.pack(side="left", padx=16)
+        self.title_lbl.pack(side="left", padx=16)
 
         # Counter of selected images next to density controls
         self.selected_counter_lbl = ctk.CTkLabel(
             self.top_bar,
-            text="Selected: 0",
+            text=f"{t('gallery.selected')}: 0",
             font=FONTS["subtitle"],
             text_color=COLORS["primary"]
         )
-        self.selected_counter_lbl.pack(side="left", padx=20)
+        self.selected_counter_lbl.pack(side="left", padx=15)
 
         # Density controls (4, 8, 16 per row)
         density_frame = ctk.CTkFrame(self.top_bar, fg_color=COLORS["surface"], corner_radius=8)
         density_frame.pack(side="left", padx=10)
 
-        density_lbl = ctk.CTkLabel(density_frame, text="Density:", font=FONTS["body_bold"])
-        density_lbl.pack(side="left", padx=(10, 6), pady=4)
+        self.density_lbl = ctk.CTkLabel(density_frame, text=f"{t('gallery.density')}:", font=FONTS["body_bold"])
+        self.density_lbl.pack(side="left", padx=(10, 6), pady=4)
 
         for d in [4, 8, 16]:
             btn = ctk.CTkButton(
@@ -155,10 +209,14 @@ class GalleryScreen(ctk.CTkFrame):
             )
             btn.pack(side="left", padx=2, pady=4)
 
+        # Persistent Language Toggle on top bar right
+        self.lang_toggle = LanguageToggle(self.top_bar)
+        self.lang_toggle.pack(side="right", padx=(10, 0))
+
         # Proceed to Order Summary button on right of top bar
         self.proceed_btn = ctk.CTkButton(
             self.top_bar,
-            text="Order Summary →",
+            text=f"{t('gallery.proceed_to_summary')} →",
             font=FONTS["button"],
             fg_color=COLORS["success"],
             hover_color=COLORS["success_hover"],
@@ -171,7 +229,7 @@ class GalleryScreen(ctk.CTkFrame):
         # Select all toggle
         self.select_all_btn = ctk.CTkButton(
             self.top_bar,
-            text="Select All",
+            text=t("gallery.select_all"),
             font=FONTS["button"],
             fg_color=COLORS["surface"],
             hover_color=COLORS["border"],
@@ -197,7 +255,7 @@ class GalleryScreen(ctk.CTkFrame):
 
         self.status_lbl = ctk.CTkLabel(
             self.gallery_frame,
-            text="Scanning files and generating thumbnails...",
+            text=t("gallery.scanning_msg"),
             font=FONTS["subtitle"],
             text_color=COLORS["text_muted"]
         )
@@ -218,7 +276,7 @@ class GalleryScreen(ctk.CTkFrame):
             w.destroy()
         placeholder = ctk.CTkLabel(
             self.right_scroll,
-            text="Tap any image tile on the left to edit print settings.",
+            text=t("gallery.tap_image_prompt"),
             font=FONTS["subtitle"],
             text_color=COLORS["text_muted"]
         )
@@ -248,7 +306,7 @@ class GalleryScreen(ctk.CTkFrame):
         if not self.photos:
             empty_lbl = ctk.CTkLabel(
                 self.gallery_frame,
-                text="No supported photographs found.",
+                text=t("gallery.no_photos"),
                 font=FONTS["subtitle"],
                 text_color=COLORS["text_muted"]
             )
@@ -414,11 +472,11 @@ class GalleryScreen(ctk.CTkFrame):
 
     def _update_selection_states(self):
         count = len(self.selected_indices)
-        self.selected_counter_lbl.configure(text=f"Selected: {count}")
+        self.selected_counter_lbl.configure(text=f"{t('gallery.selected')}: {count}")
         if count == len(self.photos) and len(self.photos) > 0:
-            self.select_all_btn.configure(text="Deselect All")
+            self.select_all_btn.configure(text=t("gallery.deselect_all"))
         else:
-            self.select_all_btn.configure(text="Select All")
+            self.select_all_btn.configure(text=t("gallery.select_all"))
 
         # Total prints count
         total_prints = 0
@@ -428,9 +486,15 @@ class GalleryScreen(ctk.CTkFrame):
             total_prints += sum(c.get("count", 0) for c in cfg.get("cards", []))
 
         if count > 0 and total_prints > 0:
-            self.proceed_btn.configure(state="normal", text=f"Order Summary ({total_prints} prints) →")
+            self.proceed_btn.configure(state="normal", text=f"{t('gallery.proceed_to_summary')} ({total_prints}) →")
         else:
-            self.proceed_btn.configure(state="disabled", text="Order Summary →")
+            self.proceed_btn.configure(state="disabled", text=f"{t('gallery.proceed_to_summary')} →")
+
+    def _update_localized_texts(self):
+        self.back_btn.configure(text=f"← {t('gallery.back_to_sources')}")
+        self.title_lbl.configure(text=f"{t('gallery.title')}: {self.source_name}")
+        self.density_lbl.configure(text=f"{t('gallery.density')}:")
+        self._update_selection_states()
 
     def _background_copy_photo(self, filepath: str):
         """Copies selected photo in background into temporary session folder."""
@@ -482,7 +546,7 @@ class GalleryScreen(ctk.CTkFrame):
         self.editor_cb_var = ctk.BooleanVar(value=is_selected)
         editor_cb = ctk.CTkCheckBox(
             hdr_frame,
-            text="Add to order",
+            text=t("gallery.add_to_order"),
             font=FONTS["body_bold"],
             variable=self.editor_cb_var,
             command=self._on_editor_checkbox_toggled
@@ -491,26 +555,35 @@ class GalleryScreen(ctk.CTkFrame):
 
         # Image Viewport / Preview
         viewport_frame = ctk.CTkFrame(self.right_scroll, fg_color=COLORS["surface"], corner_radius=10)
-        viewport_frame.pack(fill="x", pady=(0, 12))
+        viewport_frame.pack(fill="x", pady=(0, 10))
         viewport_frame.bind("<Button-1>", lambda e: self._close_dropdown_popup())
 
+        self.canvas_info_lbl = ctk.CTkLabel(
+            viewport_frame,
+            text="",
+            font=FONTS["small"],
+            text_color=COLORS["primary"]
+        )
+        self.canvas_info_lbl.pack(pady=(6, 2))
+        self.canvas_info_lbl.bind("<Button-1>", lambda e: self._close_dropdown_popup())
+
         self.preview_lbl = ctk.CTkLabel(viewport_frame, text="Loading preview...", font=FONTS["small"])
-        self.preview_lbl.pack(pady=10, fill="both", expand=True)
+        self.preview_lbl.pack(pady=(2, 10), fill="both", expand=True)
         self.preview_lbl.bind("<Button-1>", lambda e: self._close_dropdown_popup())
 
         # Crop mode selector
         crop_frame = ctk.CTkFrame(self.right_scroll, fg_color="transparent")
-        crop_frame.pack(fill="x", pady=(0, 14))
+        crop_frame.pack(fill="x", pady=(0, 10))
 
-        crop_lbl = ctk.CTkLabel(crop_frame, text="Crop Mode:", font=FONTS["body_bold"], text_color=COLORS["primary"])
+        crop_lbl = ctk.CTkLabel(crop_frame, text=f"{t('gallery.crop_mode')}:", font=FONTS["body_bold"], text_color=COLORS["primary"])
         crop_lbl.pack(side="left", padx=(0, 10))
 
         self.crop_mode_var = ctk.StringVar(value=cfg.get("crop_mode", "fill_in"))
         crop_options = [
-            ("Fill-in", "fill_in"),
-            ("Fit-in", "fit_in"),
-            ("Border 4mm", "border"),
-            ("No-resize", "no_resize"),
+            (t("crop_modes.fill_in"), "fill_in"),
+            (t("crop_modes.fit_in"), "fit_in"),
+            (t("crop_modes.border"), "border"),
+            (t("crop_modes.no_resize"), "no_resize"),
         ]
         for label, val in crop_options:
             rb = ctk.CTkRadioButton(
@@ -524,10 +597,10 @@ class GalleryScreen(ctk.CTkFrame):
             rb.pack(side="left", padx=6)
 
         # Horizontal size count cards container
-        cards_title = ctk.CTkLabel(self.right_scroll, text="Print Sizes & Quantities:", font=FONTS["body_bold"])
-        cards_title.pack(anchor="w", pady=(0, 6))
+        cards_title = ctk.CTkLabel(self.right_scroll, text=f"{t('gallery.sizes_and_quantities')}:", font=FONTS["body_bold"])
+        cards_title.pack(anchor="w", pady=(0, 4))
 
-        self.cards_row = ctk.CTkScrollableFrame(self.right_scroll, fg_color="transparent", orientation="horizontal", height=230)
+        self.cards_row = ctk.CTkScrollableFrame(self.right_scroll, fg_color="transparent", orientation="horizontal", height=280)
         self.cards_row.pack(fill="x", pady=(0, 10))
         self.cards_row.bind("<Button-1>", lambda e: self._close_dropdown_popup())
 
@@ -555,25 +628,88 @@ class GalleryScreen(ctk.CTkFrame):
         for w in self.cards_row.winfo_children():
             w.destroy()
 
-        if self.active_photo_idx is None:
+        if self.active_photo_idx is None or not self.photos:
             return
 
         photo = self.photos[self.active_photo_idx]
         cfg = self.photo_configs[photo["filepath"]]
-        cards = cfg["cards"]
-        can_remove = len(cards) > 1
+        cards = cfg.get("cards", [])
+        active_idx = self._get_active_card_idx(photo["filepath"])
 
-        card_width = 140
-        card_height = 200
+        card_width = 145
+        card_height = 215
+
+        if not cards:
+            empty_box = ctk.CTkFrame(self.cards_row, fg_color="transparent")
+            empty_box.pack(side="left", padx=10, pady=20)
+            no_cards_lbl = ctk.CTkLabel(
+                empty_box,
+                text=t("gallery.no_sizes_added"),
+                font=FONTS["body"],
+                text_color=COLORS["text_muted"]
+            )
+            no_cards_lbl.pack(pady=10)
 
         # Render horizontal cards side-by-side
         for c_idx, card_data in enumerate(cards):
+            is_active = (c_idx == active_idx)
+
             card_col = ctk.CTkFrame(self.cards_row, fg_color="transparent", width=card_width)
             card_col.pack(side="left", padx=8, pady=4)
 
-            # The card itself: "+" on top, size, paper dropdown, "-" on bottom
-            card = ctk.CTkFrame(card_col, fg_color=COLORS["surface"], corner_radius=10, width=card_width, height=card_height)
+            # The card itself with active border highlight
+            card_border_color = COLORS["primary"] if is_active else COLORS["border"]
+            card_border_width = 3 if is_active else 1
+            card_bg_color = COLORS.get("surface_light", "#242d3d") if is_active else COLORS["surface"]
+
+            card = ctk.CTkFrame(
+                card_col,
+                fg_color=card_bg_color,
+                border_color=card_border_color,
+                border_width=card_border_width,
+                corner_radius=10,
+                width=card_width,
+                height=card_height
+            )
             card.pack(fill="both", expand=True)
+
+            # Header of card: size title + top-right remove button
+            card_hdr = ctk.CTkFrame(card, fg_color="transparent")
+            card_hdr.pack(fill="x", padx=8, pady=(6, 0))
+
+            size_color = COLORS["primary"] if is_active else COLORS["text"]
+            size_lbl = ctk.CTkLabel(
+                card_hdr,
+                text=card_data["size_name"],
+                font=FONTS["body_bold"],
+                text_color=size_color
+            )
+            size_lbl.pack(side="left", anchor="w")
+
+            del_btn = ctk.CTkButton(
+                card_hdr,
+                text="✕",
+                font=FONTS["small"],
+                width=24,
+                height=24,
+                corner_radius=12,
+                fg_color=COLORS["danger"],
+                hover_color=COLORS["danger_hover"],
+                text_color=COLORS["text"],
+                command=lambda i=c_idx: self._remove_size_card(i)
+            )
+            del_btn.pack(side="right")
+
+            # Active indicator badge / tap hint
+            active_badge_text = f"● {t('gallery.active_badge')}" if is_active else f"○ {t('gallery.tap_to_preview')}"
+            active_badge_color = COLORS["primary"] if is_active else COLORS["text_muted"]
+            active_lbl = ctk.CTkLabel(
+                card,
+                text=active_badge_text,
+                font=FONTS["small"],
+                text_color=active_badge_color
+            )
+            active_lbl.pack(pady=(0, 2))
 
             # 1. "+" button on top
             plus_btn = ctk.CTkButton(
@@ -582,34 +718,19 @@ class GalleryScreen(ctk.CTkFrame):
                 font=FONTS["subtitle"],
                 fg_color=COLORS["primary"],
                 hover_color=COLORS["primary_hover"],
-                height=32,
+                height=28,
                 command=lambda i=c_idx: self._increment_card_count(i)
             )
-            plus_btn.pack(fill="x", padx=10, pady=(10, 4))
+            plus_btn.pack(fill="x", padx=10, pady=(2, 2))
 
-            # Count & Size
-            size_lbl = ctk.CTkLabel(card, text=card_data["size_name"], font=FONTS["body_bold"], text_color=COLORS["text"])
-            size_lbl.pack(pady=2)
-
-            count_lbl = ctk.CTkLabel(card, text=f"Qty: {card_data['count']}", font=FONTS["title"], text_color=COLORS["primary"])
-            count_lbl.pack(pady=2)
-
-            # Paper dropdown menu
-            finish_menu = ctk.CTkOptionMenu(
+            # Count
+            count_lbl = ctk.CTkLabel(
                 card,
-                values=self.finish_names,
-                font=FONTS["small"],
-                height=28,
-                command=lambda val, i=c_idx: self._on_card_paper_changed(i, val)
+                text=f"{t('gallery.qty')}: {card_data['count']}",
+                font=FONTS["subtitle"],
+                text_color=COLORS["primary"] if card_data["count"] > 0 else COLORS["text"]
             )
-            finish_menu.set(card_data["paper_type"])
-            finish_menu.pack(fill="x", padx=10, pady=4)
-
-            # Price per print
-            price = self._get_price(card_data["size_name"], card_data["paper_type"])
-            price_str = f"{price:.2f} PLN" if price > 0 else "N/A"
-            price_lbl = ctk.CTkLabel(card, text=price_str, font=FONTS["small"], text_color=COLORS["text_muted"])
-            price_lbl.pack(pady=(0, 4))
+            count_lbl.pack(pady=1)
 
             # 2. "-" button on bottom
             minus_btn = ctk.CTkButton(
@@ -618,24 +739,44 @@ class GalleryScreen(ctk.CTkFrame):
                 font=FONTS["subtitle"],
                 fg_color=COLORS["border"],
                 hover_color=COLORS["danger"],
-                height=32,
+                height=28,
                 command=lambda i=c_idx: self._decrement_card_count(i)
             )
-            minus_btn.pack(fill="x", padx=10, pady=(0, 10))
+            minus_btn.pack(fill="x", padx=10, pady=(2, 2))
 
-            # "x" button under each card (disabled if only 1 card remaining)
-            x_btn = ctk.CTkButton(
-                card_col,
-                text="✕ Remove",
+            # Paper dropdown menu
+            finish_menu = ctk.CTkOptionMenu(
+                card,
+                values=self.finish_names,
                 font=FONTS["small"],
-                fg_color=COLORS["danger"] if can_remove else COLORS["surface"],
-                hover_color=COLORS["danger_hover"] if can_remove else COLORS["surface"],
-                text_color=COLORS["text"] if can_remove else COLORS["text_muted"],
-                state="normal" if can_remove else "disabled",
+                height=26,
+                command=lambda val, i=c_idx: self._on_card_paper_changed(i, val)
+            )
+            finish_menu.set(card_data["paper_type"])
+            finish_menu.pack(fill="x", padx=8, pady=2)
+
+            # Price per print
+            price = self._get_price(card_data["size_name"], card_data["paper_type"])
+            price_str = f"{price:.2f} PLN" if price > 0 else "N/A"
+            price_lbl = ctk.CTkLabel(card, text=price_str, font=FONTS["small"], text_color=COLORS["text_muted"])
+            price_lbl.pack(pady=(0, 4))
+
+            # Under-card remove button
+            bottom_rem_btn = ctk.CTkButton(
+                card_col,
+                text=f"✕ {t('gallery.remove_card')}",
+                font=FONTS["small"],
+                fg_color=COLORS["danger"],
+                hover_color=COLORS["danger_hover"],
+                text_color=COLORS["text"],
                 height=26,
                 command=lambda i=c_idx: self._remove_size_card(i)
             )
-            x_btn.pack(fill="x", padx=10, pady=(6, 0))
+            bottom_rem_btn.pack(fill="x", padx=8, pady=(4, 0))
+
+            # Clicking anywhere on the card activates it
+            for w in [card, card_col, size_lbl, active_lbl, count_lbl, price_lbl]:
+                w.bind("<Button-1>", lambda e, i=c_idx: self._select_active_card(i))
 
         # "+" Add card button: card same size as default sizes
         add_col = ctk.CTkFrame(self.cards_row, fg_color="transparent", width=card_width)
@@ -643,7 +784,7 @@ class GalleryScreen(ctk.CTkFrame):
 
         add_card_btn = ctk.CTkButton(
             add_col,
-            text="+\nAdd Size",
+            text=f"+\n{t('gallery.add_size')}",
             font=FONTS["title"],
             fg_color=COLORS["surface"],
             hover_color=COLORS["primary_hover"],
@@ -656,9 +797,9 @@ class GalleryScreen(ctk.CTkFrame):
         )
         add_card_btn.pack(fill="both", expand=True)
 
-        # Empty spacer underneath add card to align with "x" buttons
+        # Empty spacer underneath add card to align with bottom remove buttons
         spacer = ctk.CTkLabel(add_col, text="", height=26)
-        spacer.pack(fill="x", pady=(6, 0))
+        spacer.pack(fill="x", pady=(4, 0))
 
     def _increment_card_count(self, card_idx: int):
         self._close_dropdown_popup()
@@ -666,7 +807,10 @@ class GalleryScreen(ctk.CTkFrame):
             return
         photo = self.photos[self.active_photo_idx]
         cards = self.photo_configs[photo["filepath"]]["cards"]
+        if card_idx < 0 or card_idx >= len(cards):
+            return
         cards[card_idx]["count"] += 1
+        self._set_active_card_idx(photo["filepath"], card_idx)
 
         # Automatically select photo for order
         self.selected_indices.add(self.active_photo_idx)
@@ -678,6 +822,7 @@ class GalleryScreen(ctk.CTkFrame):
         self._background_copy_photo(photo["filepath"])
         self._update_selection_states()
         self._render_size_cards()
+        self._update_editor_preview()
 
     def _decrement_card_count(self, card_idx: int):
         self._close_dropdown_popup()
@@ -685,7 +830,10 @@ class GalleryScreen(ctk.CTkFrame):
             return
         photo = self.photos[self.active_photo_idx]
         cards = self.photo_configs[photo["filepath"]]["cards"]
+        if card_idx < 0 or card_idx >= len(cards):
+            return
         cards[card_idx]["count"] = max(0, cards[card_idx]["count"] - 1)
+        self._set_active_card_idx(photo["filepath"], card_idx)
 
         # If user decreases all counts to 0, automatically deselect photo
         total_counts = sum(c["count"] for c in cards)
@@ -698,6 +846,7 @@ class GalleryScreen(ctk.CTkFrame):
 
         self._update_selection_states()
         self._render_size_cards()
+        self._update_editor_preview()
 
     def _on_card_paper_changed(self, card_idx: int, paper_type: str):
         self._close_dropdown_popup()
@@ -705,8 +854,11 @@ class GalleryScreen(ctk.CTkFrame):
             return
         photo = self.photos[self.active_photo_idx]
         cards = self.photo_configs[photo["filepath"]]["cards"]
-        cards[card_idx]["paper_type"] = paper_type
+        if 0 <= card_idx < len(cards):
+            cards[card_idx]["paper_type"] = paper_type
+            self._set_active_card_idx(photo["filepath"], card_idx)
         self._render_size_cards()
+        self._update_editor_preview()
 
     def _remove_size_card(self, card_idx: int):
         self._close_dropdown_popup()
@@ -714,11 +866,21 @@ class GalleryScreen(ctk.CTkFrame):
             return
         photo = self.photos[self.active_photo_idx]
         cards = self.photo_configs[photo["filepath"]]["cards"]
-        if len(cards) <= 1:
-            return  # Do not allow removing the only remaining card
+        if card_idx < 0 or card_idx >= len(cards):
+            return
 
         # Removing size in one image does NOT remove it from other images
         cards.pop(card_idx)
+
+        # Adjust active card index
+        active_idx = self._get_active_card_idx(photo["filepath"])
+        if len(cards) == 0:
+            self._set_active_card_idx(photo["filepath"], 0)
+        else:
+            if active_idx >= len(cards):
+                self._set_active_card_idx(photo["filepath"], len(cards) - 1)
+            elif active_idx > card_idx:
+                self._set_active_card_idx(photo["filepath"], active_idx - 1)
 
         # If all counts are now 0, automatically deselect image
         total_counts = sum(c["count"] for c in cards)
@@ -731,6 +893,7 @@ class GalleryScreen(ctk.CTkFrame):
 
         self._update_selection_states()
         self._render_size_cards()
+        self._update_editor_preview()
 
     # -------------------------------------------------------------
     # Add Card Scrollable Dropdown with 2000ms Auto-Close
@@ -755,7 +918,7 @@ class GalleryScreen(ctk.CTkFrame):
         self.dropdown_popup = ctk.CTkFrame(self.right_scroll, fg_color=COLORS["surface"], border_width=2, border_color=COLORS["primary"], corner_radius=8)
         self.dropdown_popup.pack(pady=6)
 
-        hdr = ctk.CTkLabel(self.dropdown_popup, text="Select Size to Add:", font=FONTS["body_bold"], text_color=COLORS["primary"])
+        hdr = ctk.CTkLabel(self.dropdown_popup, text=t("gallery.select_size_to_add"), font=FONTS["body_bold"], text_color=COLORS["primary"])
         hdr.pack(padx=12, pady=(8, 4))
 
         list_scroll = ctk.CTkScrollableFrame(self.dropdown_popup, fg_color="transparent", height=130, width=180)
@@ -817,19 +980,54 @@ class GalleryScreen(ctk.CTkFrame):
                     "count": 0
                 })
 
+        if self.active_photo_idx is not None and self.photos:
+            photo = self.photos[self.active_photo_idx]
+            cards = self.photo_configs[photo["filepath"]]["cards"]
+            for i, c in enumerate(cards):
+                if c["size_name"] == size_name:
+                    self._set_active_card_idx(photo["filepath"], i)
+                    break
+
         self._render_size_cards()
+        self._update_editor_preview()
 
     def _update_editor_preview(self):
-        if self.active_photo_idx is None:
+        if self.active_photo_idx is None or not self.photos:
             return
         photo = self.photos[self.active_photo_idx]
         cfg = self.photo_configs[photo["filepath"]]
 
-        # Use first active size from cards for preview dimension
-        active_card_size = cfg["cards"][0]["size_name"] if cfg["cards"] else "10x15"
+        # Determine active card size based on active chosen print size card
+        cards = cfg.get("cards", [])
+        active_idx = self._get_active_card_idx(photo["filepath"])
+
+        if cards and 0 <= active_idx < len(cards):
+            active_card_size = cards[active_idx]["size_name"]
+            active_paper_type = cards[active_idx]["paper_type"]
+        elif cards:
+            active_card_size = cards[0]["size_name"]
+            active_paper_type = cards[0]["paper_type"]
+        else:
+            active_card_size = self.size_names[0] if self.size_names else "10x15"
+            active_paper_type = self.finish_names[0] if self.finish_names else "GLOSSY"
+
         size_obj = next((s for s in self.active_sizes if s.name == active_card_size), None)
         paper_w = size_obj.width_mm if size_obj else 102.0
         paper_h = size_obj.height_mm if size_obj else 152.0
+
+        # Calculate a larger preview box based on right pane width
+        try:
+            pane_w = self.right_pane.winfo_width()
+        except Exception:
+            pane_w = 0
+
+        if pane_w > 200:
+            box_w = max(480, min(700, pane_w - 40))
+            box_h = max(360, min(500, int(box_w * 0.72)))
+        else:
+            box_w = 480
+            box_h = 360
+        box_size = (box_w, box_h)
 
         def worker():
             try:
@@ -840,36 +1038,35 @@ class GalleryScreen(ctk.CTkFrame):
                         paper_width_mm=paper_w,
                         paper_height_mm=paper_h,
                         border_width_mm=4.0,
+                        preview_box_size=box_size,
                         auto_orientation=True
                     )
                 prev_img = prev_result["preview_image"]
-                # Scale preview to fit 320x240 max
-                prev_img.thumbnail((320, 240))
+                disp_w, disp_h = prev_result["paper_physical_mm"]
+                crop_mode_label = t(f"crop_modes.{cfg['crop_mode']}")
+
                 ctk_img = ctk.CTkImage(light_image=prev_img, dark_image=prev_img, size=prev_img.size)
                 if self.preview_lbl.winfo_exists():
-                    self.after(0, lambda: self.preview_lbl.configure(image=ctk_img, text=""))
+                    self.after(0, lambda: self._apply_preview_ui(ctk_img, active_card_size, disp_w, disp_h, active_paper_type, crop_mode_label))
             except Exception:
                 pass
         threading.Thread(target=worker, daemon=True).start()
+
+    def _apply_preview_ui(self, ctk_img: ctk.CTkImage, size_name: str, disp_w: float, disp_h: float, paper_finish: str, crop_mode_label: str):
+        if not self.preview_lbl.winfo_exists():
+            return
+        self.preview_lbl.configure(image=ctk_img, text="")
+        if hasattr(self, "canvas_info_lbl") and self.canvas_info_lbl.winfo_exists():
+            self.canvas_info_lbl.configure(
+                text=f"{t('gallery.canvas_format')}: {size_name} ({disp_w:.0f}×{disp_h:.0f} mm) • {paper_finish} • {crop_mode_label}"
+            )
 
     # -------------------------------------------------------------
     # Proceed to Order Summary & File Cleanup
     # -------------------------------------------------------------
     def _proceed_to_summary(self):
         self._close_dropdown_popup()
-        # Clean up temporary staging for unselected photos
-        temp_dir = get_temp_session_dir(self.session_id)
-        selected_filenames = {self.photos[i]["filename"] for i in self.selected_indices}
-
-        if temp_dir.exists():
-            for f in temp_dir.iterdir():
-                if f.is_file() and f.name not in selected_filenames:
-                    try:
-                        f.unlink()
-                    except Exception:
-                        pass
-
-        # Build list of configured order items
+        # Build list of configured order items without deleting unselected files
         configured_items: List[Dict[str, Any]] = []
         for idx in sorted(self.selected_indices):
             photo = self.photos[idx]
@@ -890,4 +1087,9 @@ class GalleryScreen(ctk.CTkFrame):
                     })
 
         if self.on_proceed_to_summary:
-            self.on_proceed_to_summary(configured_items)
+            import inspect
+            sig = inspect.signature(self.on_proceed_to_summary)
+            if len(sig.parameters) >= 3:
+                self.on_proceed_to_summary(configured_items, self.photo_configs, self.selected_indices)
+            else:
+                self.on_proceed_to_summary(configured_items)

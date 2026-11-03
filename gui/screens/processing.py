@@ -6,6 +6,7 @@ from gui.theme import FONTS, COLORS, TOUCH_SIZES
 from backend.orders import OrderProcessor
 from backend.database import get_db_engine
 from sqlalchemy.orm import sessionmaker
+from backend.i18n import t
 
 
 class ProcessingScreen(ctk.CTkFrame):
@@ -28,17 +29,17 @@ class ProcessingScreen(ctk.CTkFrame):
         center_card = ctk.CTkFrame(self, fg_color=COLORS["bg_card"], corner_radius=16)
         center_card.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.6, relheight=0.45)
 
-        title = ctk.CTkLabel(
+        self.title_lbl = ctk.CTkLabel(
             center_card,
-            text="Preparing Your Print Files",
+            text=t("processing.title_preparing"),
             font=FONTS["title_hero"],
             text_color=COLORS["primary"]
         )
-        title.pack(pady=(40, 16))
+        self.title_lbl.pack(pady=(40, 16))
 
         self.status_lbl = ctk.CTkLabel(
             center_card,
-            text="Preserving original files and applying photographic transformations...",
+            text=t("processing.subtitle_preparing"),
             font=FONTS["subtitle"],
             text_color=COLORS["text_muted"]
         )
@@ -82,34 +83,44 @@ class CompletionScreen(ctk.CTkFrame):
         center_card = ctk.CTkFrame(self, fg_color=COLORS["bg_card"], corner_radius=16)
         center_card.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.65, relheight=0.55)
 
-        title = ctk.CTkLabel(
+        self.title_lbl = ctk.CTkLabel(
             center_card,
-            text="Order Ready for Production!",
+            text=t("processing.title_ready"),
             font=FONTS["title_hero"],
             text_color=COLORS["success"]
         )
-        title.pack(pady=(40, 12))
+        self.title_lbl.pack(pady=(40, 12))
 
-        sub = ctk.CTkLabel(
+        self.sub_lbl = ctk.CTkLabel(
             center_card,
-            text="Originals preserved. Print files organized with exact 300 DPI dimensions.",
+            text=t("processing.subtitle_ready"),
             font=FONTS["body"],
             text_color=COLORS["text_muted"]
         )
-        sub.pack(pady=(0, 24))
+        self.sub_lbl.pack(pady=(0, 24))
 
         id_frame = ctk.CTkFrame(center_card, fg_color=COLORS["surface"], corner_radius=12)
         id_frame.pack(padx=40, pady=10, fill="x")
 
-        id_lbl = ctk.CTkLabel(id_frame, text=f"Order Number: {self.order_id}", font=FONTS["title"], text_color=COLORS["text"])
-        id_lbl.pack(pady=16)
+        self.id_lbl = ctk.CTkLabel(
+            id_frame,
+            text=t("processing.order_id_lbl", order_id=self.order_id),
+            font=FONTS["title"],
+            text_color=COLORS["text"]
+        )
+        self.id_lbl.pack(pady=16)
 
-        prints_lbl = ctk.CTkLabel(center_card, text=f"Total Prints Configured: {self.total_prints}", font=FONTS["subtitle"], text_color=COLORS["text"])
-        prints_lbl.pack(pady=12)
-
-        finish_btn = ctk.CTkButton(
+        self.prints_lbl = ctk.CTkLabel(
             center_card,
-            text="Finish & Return to Start",
+            text=t("processing.total_prints_lbl", total_prints=self.total_prints),
+            font=FONTS["subtitle"],
+            text_color=COLORS["text"]
+        )
+        self.prints_lbl.pack(pady=12)
+
+        self.finish_btn = ctk.CTkButton(
+            center_card,
+            text=t("processing.btn_finish"),
             font=FONTS["button"],
             fg_color=COLORS["primary"],
             hover_color=COLORS["primary_hover"],
@@ -117,4 +128,4 @@ class CompletionScreen(ctk.CTkFrame):
             corner_radius=TOUCH_SIZES["border_radius"],
             command=self.on_done
         )
-        finish_btn.pack(pady=(24, 40))
+        self.finish_btn.pack(pady=(24, 40))

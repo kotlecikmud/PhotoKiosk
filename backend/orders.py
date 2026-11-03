@@ -217,6 +217,17 @@ class OrderProcessor:
             # Atomic directory finalization: rename .tmp_order_id -> order_id
             staging_dir.rename(final_order_dir)
 
+            # Store order data (originals, crops, manifest) in shared directory for remote LAN browsing & download
+            try:
+                shared_base = Path("storage/shared/orders")
+                shared_base.mkdir(parents=True, exist_ok=True)
+                dest_shared_order = shared_base / order_id
+                if dest_shared_order.exists():
+                    shutil.rmtree(dest_shared_order)
+                shutil.copytree(final_order_dir, dest_shared_order)
+            except Exception:
+                pass
+
             # Update DB order status
             db_order.status = "COMPLETED"
             db_order.completed_at = datetime.utcnow()

@@ -217,6 +217,7 @@ def init_database(db_path: str = "storage/photokiosk.db", initial_admin_password
             "admin_password_must_change": "true",
             "failed_login_attempts": "0",
             "storage_base_dir": "storage",
+            "system_language": "en",
         }
         for k, v in default_settings.items():
             if not db.query(SystemSetting).filter_by(key=k).first():

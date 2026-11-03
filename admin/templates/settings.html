@@ -94,9 +94,58 @@
   {% endif %}
 </div>
 
+<!-- Language & Localization Settings Section -->
+<div class="card" id="language-settings">
+  <h3>{{ t('admin.language_section_title') }}</h3>
+  <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 16px;">
+    Manage active kiosk language, view loaded language packs from <code>config/locales/</code>, and inspect integrity errors.
+  </p>
+
+  {% if integrity_errors %}
+  <div class="alert alert-danger" style="margin-bottom: 20px;">
+    <strong>⚠️ {{ t('admin.integrity_errors_title') }}:</strong>
+    <ul style="margin-left: 20px; margin-top: 8px;">
+      {% for lang, missing in integrity_errors.items() %}
+      <li style="margin-bottom: 4px;">
+        <strong>{{ lang.upper() }} ({{ missing|length }} missing keys):</strong>
+        <span style="font-family: monospace; font-size: 12px; color: #fca5a5;">{{ missing|join(', ') }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    <p style="margin-top: 8px; font-size: 13px;">
+      <em>Incomplete language files cannot be activated until all missing keys are provided.</em>
+    </p>
+  </div>
+  {% endif %}
+
+  <div style="display: flex; gap: 24px; align-items: flex-start;">
+    <div>
+      <h4 style="color: var(--primary); margin-bottom: 8px;">{{ t('admin.loaded_languages') }}</h4>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        {% for lang in available_languages %}
+        <span class="badge badge-success" style="font-size: 14px; padding: 6px 12px;">
+          ✓ {{ locale_names.get(lang, lang.upper()) }} ({{ lang.upper() }})
+        </span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="card">
   <h3>Print & Image Processing Configuration</h3>
   <form method="POST" action="/admin/settings" style="max-width: 500px;">
+    <div class="form-group">
+      <label><strong>{{ t('admin.active_language') }}</strong></label>
+      <select name="system_language">
+        {% for lang in available_languages %}
+          <option value="{{ lang }}" {% if system_language == lang %}selected{% endif %}>
+            {{ locale_names.get(lang, lang.upper()) }} ({{ lang.upper() }})
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
     <div class="form-group">
       <label>UI Theme (Applied across Admin & Touchscreen)</label>
       <select name="ui_theme">

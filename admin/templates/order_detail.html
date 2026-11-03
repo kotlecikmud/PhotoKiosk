@@ -1,8 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Order {{ order.order_id }} — PhotoKiosk Admin{% endblock %}
 {% block content %}
-<div style="margin-bottom: 20px;">
+<div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
   <a href="/admin/orders" style="color: var(--text-muted); text-decoration: none;">&larr; Back to Orders</a>
+  <a href="/admin/orders/{{ order.order_id }}/download" style="background: var(--primary); color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 14px;">
+    ⬇ Download Order (.zip)
+  </a>
 </div>
 
 <h1 style="font-size: 24px; margin-bottom: 12px;">Order {{ order.order_id }}</h1>

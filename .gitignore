@@ -12,6 +12,8 @@ storage/*.db
 storage/originals/*
 storage/thumbnails/*
 storage/orders/*
+storage/temp_sessions/*
+storage/shared/*
 !storage/originals/.gitkeep
 !storage/thumbnails/.gitkeep
 !storage/orders/.gitkeep

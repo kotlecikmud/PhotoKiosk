@@ -249,3 +249,89 @@ def test_order_summary_grouping_and_pricing(tmp_path):
     assert len(confirmed) == 3
 
     root.destroy()
+
+
+def test_gallery_ordering_stage_bigger_preview_canvas_and_removal(tmp_path):
+    """Verifies that:
+    1. Image preview is displayed bigger (not restricted to 320x240).
+    2. Canvas size adjusts dynamically based on the active chosen print size card.
+    3. Print size cards can be removed with a button.
+    """
+    if not os.environ.get("DISPLAY"):
+        pytest.skip("Requires display")
+
+    photos_dir = tmp_path / "order_refactor_photos"
+    photos_dir.mkdir()
+    p1 = photos_dir / "photo_test.jpg"
+    img = Image.new("RGB", (1200, 800), color=(50, 100, 200))
+    img.save(str(p1), "JPEG")
+
+    db_file = tmp_path / "order_refactor.db"
+    init_database(str(db_file), initial_admin_password="AdminTestPassword123!")
+
+    import customtkinter as ctk
+    root = ctk.CTk()
+    root.geometry("1024x768")
+
+    gallery = GalleryScreen(
+        parent=root,
+        source_name="Refactor Test",
+        source_path=str(photos_dir),
+        session_id=101,
+        on_proceed_to_summary=lambda items: None
+    )
+
+    found_photos = [
+        {"filename": "photo_test.jpg", "filepath": str(p1), "size_bytes": 4096, "modified_time": 1000.0},
+    ]
+    gallery._on_photos_loaded(found_photos)
+
+    photo_key = str(p1)
+    cfg = gallery.photo_configs[photo_key]
+    assert len(cfg["cards"]) >= 2
+
+    # 1. Verify initial active card is 0
+    assert gallery._get_active_card_idx(photo_key) == 0
+    card0_size = cfg["cards"][0]["size_name"]
+    card1_size = cfg["cards"][1]["size_name"]
+
+    # 2. Select card 1 as active chosen print size card
+    gallery._select_active_card(1)
+    assert gallery._get_active_card_idx(photo_key) == 1
+
+    # Verify canvas preview info label reflects card 1 size
+    gallery._apply_preview_ui(
+        ctk_img=ctk.CTkImage(light_image=img, dark_image=img, size=(480, 320)),
+        size_name=card1_size,
+        disp_w=152.0,
+        disp_h=102.0,
+        paper_finish="GLOSSY",
+        crop_mode_label="Fill-in"
+    )
+    assert card1_size in gallery.canvas_info_lbl.cget("text")
+    assert "152×102" in gallery.canvas_info_lbl.cget("text")
+
+    # 3. Verify preview size is bigger (480x320 vs old 320x240 limit)
+    assert gallery.cards_row.cget("height") >= 270
+
+    # 4. Remove a print size card using _remove_size_card
+    initial_card_count = len(cfg["cards"])
+    gallery._remove_size_card(0)
+    assert len(cfg["cards"]) == initial_card_count - 1
+    # Card 0 (which was card 1 before pop) is now active
+    assert gallery._get_active_card_idx(photo_key) == 0
+    assert cfg["cards"][0]["size_name"] == card1_size
+
+    # 5. Remove remaining card down to 0
+    gallery._remove_size_card(0)
+    assert len(cfg["cards"]) == 0
+    # No error, renders empty message
+    gallery._render_size_cards()
+
+    # 6. Add new size back
+    gallery._add_size_to_all("13x18")
+    assert any(c["size_name"] == "13x18" for c in cfg["cards"])
+    assert gallery._get_active_card_idx(photo_key) == 0
+
+    clean_temp_session_dir(101)
+    root.destroy()

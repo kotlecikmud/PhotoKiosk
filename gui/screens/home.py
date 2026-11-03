@@ -6,6 +6,8 @@ from gui.theme import FONTS, COLORS, TOUCH_SIZES
 from devices.storage import StorageManager
 from devices.scanner import authoritative_scanner, ScanStatus
 from devices.session_manager import get_date_range_bounds, filter_photos_by_date_range, get_temp_session_dir, stage_session_thumbnails
+from backend.i18n import get_i18n, t
+from gui.language_toggle import LanguageToggle
 
 
 class HomeScreen(ctk.CTkFrame):
@@ -15,30 +17,54 @@ class HomeScreen(ctk.CTkFrame):
         self._unsubscribe_scanner: Optional[Callable[[], None]] = None
         self._date_filter_dialog: Optional[ctk.CTkToplevel] = None
         self._last_completed_scan_id: int = -1
+        self.i18n = get_i18n()
 
         self._build_ui()
+        self.i18n.subscribe(self._on_language_changed)
         self._subscribe_to_scanner()
+
+    def _on_language_changed(self, lang: str):
+        if self.winfo_exists():
+            self._update_localized_texts()
+            self.refresh_sources()
+
+    def destroy(self):
+        self.i18n.unsubscribe(self._on_language_changed)
+        if self._unsubscribe_scanner:
+            try:
+                self._unsubscribe_scanner()
+            except Exception:
+                pass
+            self._unsubscribe_scanner = None
+        super().destroy()
 
     def _build_ui(self):
         # Top banner
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.pack(fill="x", padx=40, pady=(30, 10))
 
-        title = ctk.CTkLabel(
-            header,
-            text="PHOTO KIOSK",
+        # Language toggle on top right
+        self.lang_toggle = LanguageToggle(header)
+        self.lang_toggle.pack(side="right", anchor="n")
+
+        title_box = ctk.CTkFrame(header, fg_color="transparent")
+        title_box.pack(side="left", fill="both", expand=True)
+
+        self.title_lbl = ctk.CTkLabel(
+            title_box,
+            text=t("app.title"),
             font=FONTS["title_hero"],
             text_color=COLORS["primary"]
         )
-        title.pack(anchor="w")
+        self.title_lbl.pack(anchor="w")
 
-        subtitle = ctk.CTkLabel(
-            header,
-            text="Touch to print your favorite photographs in studio quality",
+        self.subtitle_lbl = ctk.CTkLabel(
+            title_box,
+            text=t("app.subtitle"),
             font=FONTS["subtitle"],
             text_color=COLORS["text_muted"]
         )
-        subtitle.pack(anchor="w", pady=(4, 0))
+        self.subtitle_lbl.pack(anchor="w", pady=(4, 0))
 
         # iPhone Scanner Status Banner / Card (Visible when connected)
         self.scanner_card = ctk.CTkFrame(self, fg_color=COLORS["surface"], corner_radius=14)
@@ -52,13 +78,13 @@ class HomeScreen(ctk.CTkFrame):
         self.center_card = ctk.CTkFrame(self, fg_color=COLORS["bg_card"], corner_radius=16)
         self.center_card.pack(fill="both", expand=True, padx=40, pady=(10, 20))
 
-        card_title = ctk.CTkLabel(
+        self.card_title = ctk.CTkLabel(
             self.center_card,
-            text="Where should we look for images?",
+            text=t("app.prompt_sources"),
             font=FONTS["title"],
             text_color=COLORS["text"]
         )
-        card_title.pack(anchor="w", padx=30, pady=(20, 10))
+        self.card_title.pack(anchor="w", padx=30, pady=(20, 10))
 
         # Sources container
         self.sources_container = ctk.CTkScrollableFrame(
@@ -73,9 +99,9 @@ class HomeScreen(ctk.CTkFrame):
         bottom_bar = ctk.CTkFrame(self.center_card, fg_color="transparent")
         bottom_bar.pack(fill="x", padx=30, pady=(0, 20))
 
-        refresh_btn = ctk.CTkButton(
+        self.refresh_btn = ctk.CTkButton(
             bottom_bar,
-            text="Scan for Devices",
+            text=t("app.scan_devices"),
             font=FONTS["button"],
             fg_color=COLORS["surface"],
             hover_color=COLORS["border"],
@@ -83,7 +109,23 @@ class HomeScreen(ctk.CTkFrame):
             corner_radius=TOUCH_SIZES["border_radius"],
             command=self.refresh_sources
         )
-        refresh_btn.pack(side="left", padx=(0, 12))
+        self.refresh_btn.pack(side="left", padx=(0, 12))
+
+    def _update_localized_texts(self):
+        if hasattr(self, "title_lbl") and self.title_lbl.winfo_exists():
+            self.title_lbl.configure(text=t("app.title"))
+        if hasattr(self, "subtitle_lbl") and self.subtitle_lbl.winfo_exists():
+            self.subtitle_lbl.configure(text=t("app.subtitle"))
+        if hasattr(self, "card_title") and self.card_title.winfo_exists():
+            self.card_title.configure(text=t("app.prompt_sources"))
+        if hasattr(self, "refresh_btn") and self.refresh_btn.winfo_exists():
+            self.refresh_btn.configure(text=t("app.scan_devices"))
+        if hasattr(self, "scanner_title_lbl") and self.scanner_title_lbl.winfo_exists():
+            self.scanner_title_lbl.configure(text=t("scanner.iphone_title"))
+        if hasattr(self, "scanner_rescan_btn") and self.scanner_rescan_btn.winfo_exists():
+            self.scanner_rescan_btn.configure(text=t("scanner.btn_rescan"))
+        if hasattr(self, "overlay_title_lbl") and self.overlay_title_lbl.winfo_exists():
+            self.overlay_title_lbl.configure(text=t("scanner.modal_scanning"))
 
     def _build_scanner_card_ui(self):
         # Header row inside scanner card
@@ -100,7 +142,7 @@ class HomeScreen(ctk.CTkFrame):
 
         self.scanner_status_badge = ctk.CTkLabel(
             top_row,
-            text="CONNECTED",
+            text=t("scanner.connected"),
             font=FONTS["body_bold"],
             text_color=COLORS["primary"]
         )
@@ -109,7 +151,7 @@ class HomeScreen(ctk.CTkFrame):
         # Path row
         self.scanner_path_lbl = ctk.CTkLabel(
             self.scanner_card,
-            text="Path: Internal Storage",
+            text=t("scanner.path_prefix", path="Internal Storage"),
             font=FONTS["small"],
             text_color=COLORS["text_muted"]
         )
@@ -121,7 +163,7 @@ class HomeScreen(ctk.CTkFrame):
 
         self.images_count_lbl = ctk.CTkLabel(
             stats_frame,
-            text="Images: 0",
+            text=t("scanner.images_count", count=0),
             font=FONTS["body_bold"],
             text_color=COLORS["primary"]
         )
@@ -129,7 +171,7 @@ class HomeScreen(ctk.CTkFrame):
 
         self.videos_count_lbl = ctk.CTkLabel(
             stats_frame,
-            text="Videos: 0",
+            text=t("scanner.videos_count", count=0),
             font=FONTS["body_bold"],
             text_color=COLORS["text"]
         )
@@ -137,7 +179,7 @@ class HomeScreen(ctk.CTkFrame):
 
         self.files_count_lbl = ctk.CTkLabel(
             stats_frame,
-            text="Total Files: 0",
+            text=t("scanner.total_files", count=0),
             font=FONTS["body"],
             text_color=COLORS["text_muted"]
         )
@@ -145,7 +187,7 @@ class HomeScreen(ctk.CTkFrame):
 
         self.folders_count_lbl = ctk.CTkLabel(
             stats_frame,
-            text="Folders: 0",
+            text=t("scanner.folders_count", count=0),
             font=FONTS["body"],
             text_color=COLORS["text_muted"]
         )
@@ -153,7 +195,7 @@ class HomeScreen(ctk.CTkFrame):
 
         self.errors_count_lbl = ctk.CTkLabel(
             stats_frame,
-            text="Errors: 0",
+            text=t("scanner.errors_count", count=0),
             font=FONTS["body"],
             text_color=COLORS["text_muted"]
         )
@@ -162,7 +204,7 @@ class HomeScreen(ctk.CTkFrame):
         # Rescan action button
         self.scanner_rescan_btn = ctk.CTkButton(
             stats_frame,
-            text="Rescan",
+            text=t("scanner.btn_rescan"),
             font=FONTS["body_bold"],
             fg_color=COLORS["primary"],
             hover_color=COLORS["primary_hover"],
@@ -201,7 +243,7 @@ class HomeScreen(ctk.CTkFrame):
         # Scanning text indicator
         self.overlay_title_lbl = ctk.CTkLabel(
             content,
-            text="Scanning...",
+            text=t("scanner.modal_scanning"),
             font=FONTS["title_hero"],
             text_color=COLORS["primary"]
         )
@@ -210,7 +252,7 @@ class HomeScreen(ctk.CTkFrame):
         # Photos found counter
         self.overlay_photos_lbl = ctk.CTkLabel(
             content,
-            text="Found Photos: 0",
+            text=t("scanner.modal_progress", count=0),
             font=FONTS["title"],
             text_color=COLORS["text"]
         )
@@ -219,7 +261,7 @@ class HomeScreen(ctk.CTkFrame):
         # Time taken counter
         self.overlay_time_lbl = ctk.CTkLabel(
             content,
-            text="Time taken: 0.0s",
+            text=t("scanner.modal_time", elapsed=0.0),
             font=FONTS["subtitle"],
             text_color=COLORS["text_muted"]
         )
@@ -228,7 +270,7 @@ class HomeScreen(ctk.CTkFrame):
         # Current folder path
         self.overlay_path_lbl = ctk.CTkLabel(
             content,
-            text="Path: ...",
+            text=t("scanner.modal_path", path="..."),
             font=FONTS["small"],
             text_color=COLORS["text_muted"],
             wraplength=550
@@ -281,15 +323,15 @@ class HomeScreen(ctk.CTkFrame):
         errors = state.get("errors", 0)
         elapsed = state.get("elapsed_seconds", 0.0)
 
-        self.images_count_lbl.configure(text=f"Images: {images:,}")
-        self.videos_count_lbl.configure(text=f"Videos: {videos:,}")
-        self.files_count_lbl.configure(text=f"Total Files: {files:,}")
-        self.folders_count_lbl.configure(text=f"Folders: {folders:,}")
-        self.errors_count_lbl.configure(text=f"Errors: {errors:,}")
+        self.images_count_lbl.configure(text=t("scanner.images_count", count=images))
+        self.videos_count_lbl.configure(text=t("scanner.videos_count", count=videos))
+        self.files_count_lbl.configure(text=t("scanner.total_files", count=files))
+        self.folders_count_lbl.configure(text=t("scanner.folders_count", count=folders))
+        self.errors_count_lbl.configure(text=t("scanner.errors_count", count=errors))
 
         if scan_status == ScanStatus.SCANNING.value:
             self.scanner_rescan_btn.configure(state="disabled")
-            self.scanner_breakdown_lbl.configure(text="Scanning in progress...")
+            self.scanner_breakdown_lbl.configure(text=t("scanner.scan_in_progress"))
             self.scanner_auth_hint_lbl.pack_forget()
             self._show_scanning_overlay(images, elapsed, current_path)
         elif scan_status == ScanStatus.COMPLETE.value:
@@ -300,7 +342,7 @@ class HomeScreen(ctk.CTkFrame):
 
             if by_ext:
                 parts = [f"{ext}: {count}" for ext, count in sorted(by_ext.items())]
-                self.scanner_breakdown_lbl.configure(text=f"Image breakdown: {', '.join(parts)}")
+                self.scanner_breakdown_lbl.configure(text=t("scanner.image_breakdown", breakdown=", ".join(parts)))
                 self.scanner_auth_hint_lbl.pack_forget()
 
                 # Trigger date range filter dialog once per completed scan
@@ -308,17 +350,17 @@ class HomeScreen(ctk.CTkFrame):
                     self._last_completed_scan_id = current_scan_id
                     self._show_date_filter_dialog(state)
             else:
-                self.scanner_breakdown_lbl.configure(text="Scan complete. No images found.")
+                self.scanner_breakdown_lbl.configure(text=t("scanner.scan_complete_none"))
                 self.scanner_auth_hint_lbl.configure(
-                    text="⚠️ No photos were detected on this device. Please unlock your phone and authorize access (tap 'Trust This Computer' or choose 'File Transfer / MTP') so the kiosk can access your photos."
+                    text=t("scanner.error_auth_hint")
                 )
                 self.scanner_auth_hint_lbl.pack(anchor="w", padx=20, pady=(0, 8))
         elif scan_status == ScanStatus.ERROR.value:
             self._hide_scanning_overlay()
             self.scanner_rescan_btn.configure(state="normal")
-            self.scanner_breakdown_lbl.configure(text="Scan encountered an error.")
+            self.scanner_breakdown_lbl.configure(text=t("scanner.scan_error"))
             self.scanner_auth_hint_lbl.configure(
-                text="⚠️ Unable to access files on your device. Please unlock your phone, tap 'Trust' or allow file transfer, and press 'Rescan'."
+                text=t("scanner.error_general_hint")
             )
             self.scanner_auth_hint_lbl.pack(anchor="w", padx=20, pady=(0, 8))
         else:
@@ -329,9 +371,9 @@ class HomeScreen(ctk.CTkFrame):
 
     def _show_scanning_overlay(self, photos_count: int, elapsed_seconds: float, current_path: str):
         """Displays and updates the scanning overlay with photos count and time taken."""
-        self.overlay_photos_lbl.configure(text=f"Found Photos: {photos_count:,}")
-        self.overlay_time_lbl.configure(text=f"Time taken: {elapsed_seconds:.1f}s")
-        self.overlay_path_lbl.configure(text=f"Path: {current_path}")
+        self.overlay_photos_lbl.configure(text=t("scanner.modal_progress", count=photos_count))
+        self.overlay_time_lbl.configure(text=t("scanner.modal_time", elapsed=elapsed_seconds))
+        self.overlay_path_lbl.configure(text=t("scanner.modal_path", path=current_path))
 
         if not self.scanning_overlay.winfo_ismapped():
             # Place over center screen
@@ -350,13 +392,13 @@ class HomeScreen(ctk.CTkFrame):
 
         dialog = ctk.CTkToplevel(self)
         self._date_filter_dialog = dialog
-        dialog.title("Select Time Range of Photographs")
+        dialog.title(t("scanner.date_filter_title"))
         dialog.geometry("560x420")
         dialog.grab_set()
 
         header_lbl = ctk.CTkLabel(
             dialog,
-            text="Filter Photographs by Date",
+            text=t("scanner.date_filter_heading"),
             font=FONTS["title"],
             text_color=COLORS["text"]
         )
@@ -364,7 +406,7 @@ class HomeScreen(ctk.CTkFrame):
 
         sub_lbl = ctk.CTkLabel(
             dialog,
-            text="Which photographs would you like to display in the gallery?",
+            text=t("scanner.date_filter_subheading"),
             font=FONTS["subtitle"],
             text_color=COLORS["text_muted"]
         )
@@ -375,10 +417,10 @@ class HomeScreen(ctk.CTkFrame):
         buttons_frame.pack(fill="both", expand=True, padx=40, pady=(0, 20))
 
         ranges = [
-            ("1_month", bounds["1_month"]["label"], bounds["1_month"]["range_str"]),
-            ("3_months", bounds["3_months"]["label"], bounds["3_months"]["range_str"]),
-            ("6_months", bounds["6_months"]["label"], bounds["6_months"]["range_str"]),
-            ("all", bounds["all"]["label"], bounds["all"]["range_str"]),
+            ("1_month", t("scanner.filter_1_month"), bounds["1_month"]["range_str"]),
+            ("3_months", t("scanner.filter_3_months"), bounds["3_months"]["range_str"]),
+            ("6_months", t("scanner.filter_6_months"), bounds["6_months"]["range_str"]),
+            ("all", t("scanner.filter_all", count=len(state.get("discovered_photos", []))), bounds["all"]["range_str"]),
         ]
 
         for key, title, date_str in ranges:
@@ -458,20 +500,21 @@ class HomeScreen(ctk.CTkFrame):
                 self._add_source_button(
                     name=f"📱 {dev_name}",
                     path="wpd_iphone",
-                    type_label="Connected Mobile Device",
-                    action_text="Scan Device",
+                    type_label=t("app.connected_mobile"),
+                    action_text=t("app.scan_device_btn"),
                     on_click=self._start_scanning_source
                 )
 
         # 1. Shared / SMB Photos folder (if network enabled)
         if enabled_sources.get("source_network", True):
             shared_path = os.path.abspath("storage/shared")
+            network_name = t("app.network_shared")
             self._add_source_button(
-                name="Network / Shared Photos",
+                name=network_name,
                 path=shared_path,
-                type_label="Server Storage",
-                action_text="Look Here",
-                on_click=lambda p=shared_path, n="Network / Shared Photos": self.on_source_selected(n, p)
+                type_label=t("app.server_storage"),
+                action_text=t("app.look_here"),
+                on_click=lambda p=shared_path, n=network_name: self.on_source_selected(n, p)
             )
 
         # 2. Removable devices from /media, /mnt, or Windows drive letters E:, F: etc.
@@ -479,12 +522,12 @@ class HomeScreen(ctk.CTkFrame):
             removable = StorageManager.get_mounted_media_paths()
             for dev in removable:
                 p = dev["path"]
-                n = f"USB / Removable ({dev['name']})"
+                n = t("app.usb_removable", name=dev['name'])
                 self._add_source_button(
                     name=n,
                     path=p,
-                    type_label="Removable Media",
-                    action_text="Look Here",
+                    type_label=t("app.removable_media"),
+                    action_text=t("app.look_here"),
                     on_click=lambda path=p, name=n: self.on_source_selected(name, path)
                 )
 
@@ -497,8 +540,8 @@ class HomeScreen(ctk.CTkFrame):
                 self._add_source_button(
                     name=n,
                     path=p,
-                    type_label="Optical Media",
-                    action_text="Look Here",
+                    type_label=t("app.optical_media"),
+                    action_text=t("app.look_here"),
                     on_click=lambda path=p, name=n: self.on_source_selected(name, path)
                 )
 
@@ -509,7 +552,8 @@ class HomeScreen(ctk.CTkFrame):
         except RuntimeError:
             pass  # Already scanning
 
-    def _add_source_button(self, name: str, path: str, type_label: str, action_text: str = "Look Here", on_click: Optional[Callable[[], None]] = None):
+    def _add_source_button(self, name: str, path: str, type_label: str, action_text: Optional[str] = None, on_click: Optional[Callable[[], None]] = None):
+        action_text = action_text or t("app.look_here")
         row = ctk.CTkFrame(self.sources_container, fg_color=COLORS["surface"], corner_radius=12)
         row.pack(fill="x", pady=8, ipady=6)
 
@@ -519,7 +563,7 @@ class HomeScreen(ctk.CTkFrame):
         lbl_name = ctk.CTkLabel(info, text=name, font=FONTS["subtitle"], text_color=COLORS["text"])
         lbl_name.pack(anchor="w")
 
-        lbl_path = ctk.CTkLabel(info, text=f"Type: {type_label} | Path: {path}", font=FONTS["small"], text_color=COLORS["text_muted"])
+        lbl_path = ctk.CTkLabel(info, text=t("app.type_path_info", type_label=type_label, path=path), font=FONTS["small"], text_color=COLORS["text_muted"])
         lbl_path.pack(anchor="w")
 
         cmd = on_click if on_click else (lambda: self.on_source_selected(name, path))

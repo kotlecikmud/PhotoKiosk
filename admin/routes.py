@@ -24,8 +24,11 @@ from admin.auth import (
 )
 from gui.theme import THEMES, get_theme_colors, set_active_theme
 
+from backend.i18n import get_i18n, t
+
 admin_router = APIRouter(prefix="/admin", include_in_schema=False)
 templates = Jinja2Templates(directory="admin/templates")
+templates.env.globals["t"] = t
 
 
 def get_current_theme_colors(db: Session) -> dict:
@@ -289,6 +292,51 @@ async def view_order(order_id: str, request: Request, db: Session = Depends(get_
     )
 
 
+@admin_router.get("/orders/{order_id}/download")
+async def download_order_zip(order_id: str, request: Request, db: Session = Depends(get_db)):
+    if not get_current_admin(request):
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    order = db.query(Order).filter_by(order_id=order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    # Locate order directory (try storage/shared/orders/<id> or storage/orders/<id>)
+    candidates = [
+        Path("storage/shared/orders") / order_id,
+        Path("storage/orders") / order_id,
+    ]
+    if order.manifest_path:
+        candidates.insert(0, Path(order.manifest_path).parent)
+
+    target_dir = None
+    for cand in candidates:
+        if cand.exists() and cand.is_dir():
+            target_dir = cand
+            break
+
+    if not target_dir:
+        raise HTTPException(status_code=404, detail="Order directory not found on server")
+
+    # Create temporary zip archive
+    temp_zip = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    temp_zip.close()
+
+    with zipfile.ZipFile(temp_zip.name, "w", zipfile.ZIP_DEFLATED) as zf:
+        for root_dir, _, files in os.walk(target_dir):
+            for file in files:
+                file_full = Path(root_dir) / file
+                rel_path = file_full.relative_to(target_dir)
+                zf.write(file_full, arcname=str(rel_path))
+
+    return FileResponse(
+        path=temp_zip.name,
+        filename=f"{order_id}.zip",
+        media_type="application/zip",
+        background=BackgroundTask(lambda: os.unlink(temp_zip.name) if os.path.exists(temp_zip.name) else None)
+    )
+
+
 @admin_router.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request, db: Session = Depends(get_db)):
     if not get_current_admin(request):
@@ -298,6 +346,12 @@ async def settings_page(request: Request, db: Session = Depends(get_db)):
     theme_colors = get_current_theme_colors(db)
     paper_finishes = db.query(PaperFinish).order_by(PaperFinish.sort_order).all()
     service_prices = db.query(PrintServicePrice).order_by(PrintServicePrice.size_name, PrintServicePrice.paper_type).all()
+
+    i18n_mgr = get_i18n()
+    i18n_mgr.reload_locales()
+    available_langs = i18n_mgr.get_available_languages()
+    integrity_errs = i18n_mgr.get_integrity_errors()
+    current_system_lang = settings_map.get("system_language", i18n_mgr.current_lang)
 
     success_msg = request.query_params.get("success")
     error_msg = request.query_params.get("error")
@@ -313,6 +367,10 @@ async def settings_page(request: Request, db: Session = Depends(get_db)):
             "theme_colors": theme_colors,
             "paper_finishes": paper_finishes,
             "service_prices": service_prices,
+            "available_languages": available_langs,
+            "locale_names": i18n_mgr.locale_names,
+            "integrity_errors": integrity_errs,
+            "system_language": current_system_lang,
             "success_msg": success_msg,
             "error_msg": error_msg,
         },
@@ -383,6 +441,7 @@ async def import_services_json(
             if (
                 service_id.startswith("ODBITK_")
                 and "(ze slajdów)" not in name
+                and "(fotokopia)" not in name.lower()
                 and not service_id.endswith("_CONFIG")
                 and service_id != "ODBITK_MIN"
                 and service_id != "ODBITK_0181"
