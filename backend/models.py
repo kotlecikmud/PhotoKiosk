@@ -16,6 +16,19 @@ class PrintSizeSchema(BaseModel):
         from_attributes = True
 
 
+class PrintServicePriceSchema(BaseModel):
+    id: Optional[int] = None
+    service_id: str
+    name: str
+    size_name: str
+    paper_type: str
+    sale_price: float
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
 class PaperFinishSchema(BaseModel):
     id: Optional[int] = None
     name: str

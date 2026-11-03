@@ -1,5 +1,27 @@
 # PhotoKiosk Changelog
 
+## [0.0.3] - 2026-11-03
+
+### Added
+- **Split-Screen Gallery & Photo Editor Interface**:
+  - Replaced multi-screen workflow with a split-screen view: gallery tile grid on the left half, individual photo print editor on the right half.
+  - Added density controls (4, 8, 16 thumbnails per row) and a selected images counter on the top bar.
+  - Image inspection pane on the right showing live crop previews (*Fill-in*, *Fit-in*, *Border 4mm*, *No-resize*).
+  - Horizontal print size cards: `+` button on top, size name, paper type dropdown menu, `-` button on bottom, price per print display, and `✕ Remove` button underneath (disabled if only 1 card remains).
+  - `+ Add Size` card button with matching card dimensions, opening a scrollable dropdown of available sizes with a 2000ms inactivity auto-close timer and tap-outside dismissal.
+  - Cross-photo format synchronization: adding a print format adds it across all photos in the session with 0 initial count; removing a format removes it only from the active photo.
+  - Order selection checkboxes on both gallery tiles and editor pane, automatically selecting photos when print count > 0 and automatically deselecting photos when count reaches 0.
+- **Background Staging & Selective Order Storage**:
+  - Automatically copies selected photos to temporary session storage (`storage/temp_sessions/session_<id>/`) in the background.
+  - Automatically deletes unselected staged files from temporary storage upon proceeding to the order summary, ensuring only selected files are stored and processed.
+- **Order Summary Grouping & Pricing**:
+  - Direct transition from GalleryScreen to OrderSummaryScreen without intermediate config screen.
+  - Grouped breakdown of prints by paper finish and size with individual copy counting, subtotals, and grand order total.
+- **Admin Paper Settings & Services JSON Pricing Binding**:
+  - Dedicated "Paper Settings & Service Pricing" section in the Admin Settings tab.
+  - Management of paper finishes (add new finish, toggle active state, delete).
+  - Direct `services.json` upload importer in Admin settings, parsing standard `ODBITK_` items (ignoring slide prints and non-print items) and automatically binding prices into the `print_service_prices` database table.
+
 ## [0.0.2] - 2026-11-03
 
 ### Added

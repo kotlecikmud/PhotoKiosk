@@ -6,6 +6,93 @@
 {% if success_msg %}
 <div class="alert alert-success">{{ success_msg }}</div>
 {% endif %}
+{% if error_msg %}
+<div class="alert alert-danger">{{ error_msg }}</div>
+{% endif %}
+
+<div class="card" id="paper-settings">
+  <h3>Paper Settings & Service Pricing</h3>
+  <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 16px;">
+    Manage available paper finishes and bind size/paper prices by importing <code>services.json</code>.
+  </p>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+    <!-- Add Paper Finish Form -->
+    <div>
+      <h4 style="color: var(--primary); margin-bottom: 12px;">Add Paper Finish</h4>
+      <form method="POST" action="/admin/paper-finishes" style="display: flex; gap: 10px;">
+        <input type="text" name="name" placeholder="e.g. SILK, PEARL" required style="flex: 1;">
+        <button type="submit">Add Finish</button>
+      </form>
+    </div>
+
+    <!-- Import services.json Form -->
+    <div>
+      <h4 style="color: var(--primary); margin-bottom: 12px;">Import Services JSON</h4>
+      <form method="POST" action="/admin/services/import" enctype="multipart/form-data" style="display: flex; gap: 10px;">
+        <input type="file" name="services_file" accept=".json" required style="flex: 1;">
+        <button type="submit">Import Prices</button>
+      </form>
+    </div>
+  </div>
+
+  <h4 style="margin-top: 16px; margin-bottom: 8px;">Configured Paper Finishes</h4>
+  <table style="margin-bottom: 24px;">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in paper_finishes %}
+      <tr>
+        <td><strong>{{ f.name }}</strong></td>
+        <td>
+          <span class="badge {% if f.is_active %}badge-success{% else %}badge-danger{% endif %}">
+            {% if f.is_active %}ACTIVE{% else %}DISABLED{% endif %}
+          </span>
+        </td>
+        <td>
+          <form method="POST" action="/admin/paper-finishes/{{ f.id }}/toggle" style="display: inline;">
+            <button type="submit" class="btn-sm">Toggle</button>
+          </form>
+          <form method="POST" action="/admin/paper-finishes/{{ f.id }}/delete" style="display: inline;" onsubmit="return confirm('Delete paper finish {{ f.name }}?');">
+            <button type="submit" class="btn-sm btn-danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if service_prices %}
+  <h4 style="margin-top: 16px; margin-bottom: 8px;">Imported Service Prices ({{ service_prices|length }} Standard Prints)</h4>
+  <div style="max-height: 250px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px;">
+    <table>
+      <thead>
+        <tr>
+          <th>Service ID</th>
+          <th>Size</th>
+          <th>Paper Type</th>
+          <th>Price per Print</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for sp in service_prices %}
+        <tr>
+          <td><code>{{ sp.service_id }}</code></td>
+          <td>{{ sp.size_name }}</td>
+          <td>{{ sp.paper_type|capitalize }}</td>
+          <td><strong>{{ "%.2f"|format(sp.sale_price) }} PLN</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
 
 <div class="card">
   <h3>Print & Image Processing Configuration</h3>

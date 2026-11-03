@@ -2,7 +2,7 @@
 import os
 import sqlite3
 from datetime import datetime
-from typing import Generator, Optional, List, Dict, Any
+from typing import Generator, Optional, List, Dict, Any, Tuple
 from sqlalchemy import (
     create_engine,
     Column,
@@ -45,9 +45,21 @@ class PaperFinish(Base):
     __tablename__ = "paper_finishes"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(50), unique=True, nullable=False)  # "MATTE", "GLOSSY"
+    name = Column(String(50), unique=True, nullable=False)  # "MATTE", "GLOSSY", "SILK"
     is_active = Column(Boolean, default=True, nullable=False)
     sort_order = Column(Integer, default=0)
+
+
+class PrintServicePrice(Base):
+    __tablename__ = "print_service_prices"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    service_id = Column(String(50), unique=True, nullable=False)  # e.g. "ODBITK_0001"
+    name = Column(String(100), nullable=False)  # "9x13 glossy"
+    size_name = Column(String(50), nullable=False)  # "9x13"
+    paper_type = Column(String(50), nullable=False)  # "glossy" (normalized lowercase)
+    sale_price = Column(Float, nullable=False, default=0.0)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class Order(Base):
@@ -119,6 +131,49 @@ def get_db_engine(db_path: Optional[str] = None):
         connect_args={"check_same_thread": False},
         echo=False
     )
+
+
+def get_service_price(size_name: str, paper_type: str, db: Optional[Session] = None) -> float:
+    """Returns the sale price for a given size and paper type, falling back to 0.0 if not found."""
+    norm_size = size_name.strip().lower()
+    norm_paper = paper_type.strip().lower()
+
+    should_close = False
+    if db is None:
+        engine = get_db_engine()
+        SessionLocal = sessionmaker(bind=engine)
+        db = SessionLocal()
+        should_close = True
+
+    try:
+        prices = db.query(PrintServicePrice).all()
+        for p in prices:
+            if p.size_name.strip().lower() == norm_size and p.paper_type.strip().lower() == norm_paper:
+                return float(p.sale_price)
+        return 0.0
+    finally:
+        if should_close:
+            db.close()
+
+
+def get_all_service_prices_map(db: Optional[Session] = None) -> Dict[Tuple[str, str], float]:
+    """Returns mapping of (size_lower, paper_lower) -> sale_price."""
+    should_close = False
+    if db is None:
+        engine = get_db_engine()
+        SessionLocal = sessionmaker(bind=engine)
+        db = SessionLocal()
+        should_close = True
+
+    try:
+        prices = db.query(PrintServicePrice).all()
+        res = {}
+        for p in prices:
+            res[(p.size_name.strip().lower(), p.paper_type.strip().lower())] = float(p.sale_price)
+        return res
+    finally:
+        if should_close:
+            db.close()
 
 
 def init_database(db_path: str = "storage/photokiosk.db", initial_admin_password: Optional[str] = None):

@@ -6,7 +6,6 @@ from typing import Optional, List, Dict, Any
 from gui.theme import COLORS, FONTS, set_active_theme
 from gui.screens.home import HomeScreen
 from gui.screens.gallery import GalleryScreen
-from gui.screens.print_config import PrintConfigScreen
 from gui.screens.order_summary import OrderSummaryScreen
 from gui.screens.processing import ProcessingScreen, CompletionScreen
 from devices.monitor import DeviceMonitorDaemon
@@ -34,7 +33,6 @@ class PhotoKioskApp(ctk.CTk):
         self.current_session_id: int = 1
         self.current_source_name: str = ""
         self.current_source_path: str = ""
-        self.selected_photos: List[Dict[str, Any]] = []
         self.configured_items: List[Dict[str, Any]] = []
 
         # Clean lingering temp sessions on startup
@@ -78,21 +76,8 @@ class PhotoKioskApp(ctk.CTk):
             self.container,
             source_name=self.current_source_name,
             source_path=self.current_source_path,
+            session_id=self.current_session_id,
             on_back=self.show_home_screen,
-            on_proceed_to_config=self._on_proceed_to_config
-        )
-        screen.pack(fill="both", expand=True)
-
-    def _on_proceed_to_config(self, selected_photos: List[Dict[str, Any]]):
-        self.selected_photos = selected_photos
-        self.show_print_config_screen()
-
-    def show_print_config_screen(self):
-        self._clear_container()
-        screen = PrintConfigScreen(
-            self.container,
-            selected_photos=self.selected_photos,
-            on_back=self.show_gallery_screen,
             on_proceed_to_summary=self._on_proceed_to_summary
         )
         screen.pack(fill="both", expand=True)
@@ -106,7 +91,7 @@ class PhotoKioskApp(ctk.CTk):
         screen = OrderSummaryScreen(
             self.container,
             items=self.configured_items,
-            on_back=self.show_print_config_screen,
+            on_back=self.show_gallery_screen,
             on_confirm_order=self._on_confirm_order
         )
         screen.pack(fill="both", expand=True)

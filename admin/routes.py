@@ -3,15 +3,16 @@ import os
 import shutil
 from pathlib import Path
 from typing import Optional
-from fastapi import APIRouter, Request, Response, Form, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Request, Response, Form, Depends, HTTPException, status, Query, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from starlette.background import BackgroundTask
+import json
 import tempfile
 import zipfile
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from backend.database import get_db_engine, PrintSize, PaperFinish, Order, OrderItem, SystemSetting
+from backend.database import get_db_engine, PrintSize, PaperFinish, PrintServicePrice, Order, OrderItem, SystemSetting
 from backend.security import verify_password, hash_password
 from admin.auth import (
     create_session,
@@ -295,6 +296,11 @@ async def settings_page(request: Request, db: Session = Depends(get_db)):
 
     settings_map = {s.key: s.value for s in db.query(SystemSetting).all()}
     theme_colors = get_current_theme_colors(db)
+    paper_finishes = db.query(PaperFinish).order_by(PaperFinish.sort_order).all()
+    service_prices = db.query(PrintServicePrice).order_by(PrintServicePrice.size_name, PrintServicePrice.paper_type).all()
+
+    success_msg = request.query_params.get("success")
+    error_msg = request.query_params.get("error")
 
     return templates.TemplateResponse(
         request=request,
@@ -305,8 +311,114 @@ async def settings_page(request: Request, db: Session = Depends(get_db)):
             "settings": settings_map,
             "themes": THEMES,
             "theme_colors": theme_colors,
+            "paper_finishes": paper_finishes,
+            "service_prices": service_prices,
+            "success_msg": success_msg,
+            "error_msg": error_msg,
         },
     )
+
+
+@admin_router.post("/paper-finishes")
+async def add_paper_finish(
+    request: Request,
+    name: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    if not get_current_admin(request):
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    clean_name = name.strip().upper()
+    existing = db.query(PaperFinish).filter_by(name=clean_name).first()
+    if not existing:
+        max_order = db.query(PaperFinish).count()
+        db.add(PaperFinish(name=clean_name, is_active=True, sort_order=max_order + 1))
+        db.commit()
+
+    return RedirectResponse(url="/admin/settings?success=Paper+finish+added#paper-settings", status_code=303)
+
+
+@admin_router.post("/paper-finishes/{finish_id}/toggle")
+async def toggle_paper_finish(finish_id: int, request: Request, db: Session = Depends(get_db)):
+    if not get_current_admin(request):
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    finish = db.query(PaperFinish).filter_by(id=finish_id).first()
+    if finish:
+        finish.is_active = not finish.is_active
+        db.commit()
+    return RedirectResponse(url="/admin/settings?success=Paper+finish+updated#paper-settings", status_code=303)
+
+
+@admin_router.post("/paper-finishes/{finish_id}/delete")
+async def delete_paper_finish(finish_id: int, request: Request, db: Session = Depends(get_db)):
+    if not get_current_admin(request):
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    finish = db.query(PaperFinish).filter_by(id=finish_id).first()
+    if finish:
+        db.delete(finish)
+        db.commit()
+    return RedirectResponse(url="/admin/settings?success=Paper+finish+deleted#paper-settings", status_code=303)
+
+
+@admin_router.post("/services/import")
+async def import_services_json(
+    request: Request,
+    services_file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    if not get_current_admin(request):
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    try:
+        content = await services_file.read()
+        items = json.loads(content.decode("utf-8"))
+
+        count_imported = 0
+        for item in items:
+            service_id = str(item.get("id", ""))
+            # Must be standard prints: start with ODBITK_, not slides, not MIN or CONFIG
+            name = item.get("name", "")
+            if (
+                service_id.startswith("ODBITK_")
+                and "(ze slajdów)" not in name
+                and not service_id.endswith("_CONFIG")
+                and service_id != "ODBITK_MIN"
+                and service_id != "ODBITK_0181"
+            ):
+                parts = name.strip().split()
+                if len(parts) >= 2:
+                    size_name = parts[0]
+                    paper_type = " ".join(parts[1:]).lower()
+                    sale_price = float(item.get("sale_price", 0.0))
+
+                    existing = db.query(PrintServicePrice).filter_by(service_id=service_id).first()
+                    if existing:
+                        existing.name = name
+                        existing.size_name = size_name
+                        existing.paper_type = paper_type
+                        existing.sale_price = sale_price
+                    else:
+                        db.add(PrintServicePrice(
+                            service_id=service_id,
+                            name=name,
+                            size_name=size_name,
+                            paper_type=paper_type,
+                            sale_price=sale_price
+                        ))
+                    count_imported += 1
+
+        db.commit()
+        return RedirectResponse(
+            url=f"/admin/settings?success=Imported+{count_imported}+service+prices#paper-settings",
+            status_code=303
+        )
+    except Exception as e:
+        return RedirectResponse(
+            url=f"/admin/settings?error=Import+failed:+{str(e)}#paper-settings",
+            status_code=303
+        )
 
 
 @admin_router.post("/settings")
