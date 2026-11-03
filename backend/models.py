@@ -102,3 +102,8 @@ class ScannerStatusResponse(BaseModel):
     errors: int
     images_by_extension: Dict[str, int] = {}
     session_id: int = 0
+    scan_id: int = 0
+    start_time: float = 0.0
+    elapsed_seconds: float = 0.0
+    needs_authorization: bool = False
+    discovered_photos: List[Dict[str, Any]] = []

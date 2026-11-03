@@ -165,11 +165,13 @@ class WindowsWPDHandler:
                     continue
 
                 if is_f:
-                    sub_path = f"{current_path}/{item_name}" if current_path else item_name
+                    sub_path = f"{current_path}\\{item_name}" if current_path else item_name
                     try:
                         sub_folder = item.GetFolder
                         if sub_folder:
                             yield from _traverse(sub_folder, sub_path)
+                        else:
+                            yield {"type": "error", "path": sub_path, "error": "Folder not accessible"}
                     except Exception as e:
                         if on_error:
                             try:
@@ -179,6 +181,24 @@ class WindowsWPDHandler:
                         yield {"type": "error", "path": sub_path, "error": str(e)}
                 else:
                     ext = os.path.splitext(item_name)[1].lower()
+                    mtime = 0.0
+                    size = 0
+                    try:
+                        # Extract ModifyDate or Size if available from COM item
+                        mdate = getattr(item, "ModifyDate", None)
+                        if mdate is not None:
+                            if hasattr(mdate, "timestamp"):
+                                mtime = mdate.timestamp()
+                            else:
+                                import datetime
+                                if isinstance(mdate, (datetime.datetime, datetime.date)):
+                                    mtime = mdate.timestamp()
+                                elif isinstance(mdate, (int, float)):
+                                    mtime = float(mdate)
+                        size = getattr(item, "Size", 0) or 0
+                    except Exception:
+                        pass
+
                     if on_file_found:
                         try:
                             on_file_found(current_path, item_name)
@@ -189,8 +209,11 @@ class WindowsWPDHandler:
                         "path": current_path,
                         "name": item_name,
                         "extension": ext,
+                        "relative_path": f"{current_path}\\{item_name}",
+                        "modified_time": mtime,
+                        "size_bytes": size,
                     }
 
             yield {"type": "folder_exit", "path": current_path}
 
-        yield from _traverse(storage_folder, "Internal Storage")
+        yield from _traverse(storage_folder, "Apple iPhone\\Internal Storage")

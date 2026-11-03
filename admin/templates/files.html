@@ -5,32 +5,52 @@
 
 <div class="card">
   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-    <h3>Shared Storage Directory ({{ current_path }})</h3>
+    <div>
+      <h3 style="margin-bottom: 4px;">Shared Storage Directory</h3>
+      <div style="font-size: 13px; color: var(--text-muted);">
+        <a href="/admin/files" style="color: var(--primary); text-decoration: none;">📁 root</a>
+        {% if current_subpath %}
+          / <span>{{ current_subpath }}</span>
+        {% endif %}
+      </div>
+    </div>
+    {% if current_subpath %}
+      <a href="/admin/files{% if parent_subpath %}?path={{ parent_subpath }}{% endif %}" class="btn-sm btn-secondary" style="text-decoration: none; padding: 6px 12px; border-radius: 4px; border: 1px solid var(--border);">⬆ Up one folder</a>
+    {% endif %}
   </div>
+
   <table>
     <thead>
       <tr>
         <th>Name</th>
         <th>Type</th>
         <th>Size</th>
-        <th>Actions</th>
+        <th style="width: 200px;">Actions</th>
       </tr>
     </thead>
     <tbody>
       {% for f in files %}
       <tr>
-        <td><strong>{{ f.name }}</strong></td>
+        <td>
+          {% if f.is_dir %}
+            <a href="/admin/files?path={{ f.rel_path }}" style="color: var(--primary); text-decoration: none; font-weight: 600;">📁 {{ f.name }}/</a>
+          {% else %}
+            <span>📄 {{ f.name }}</span>
+          {% endif %}
+        </td>
         <td>{{ f.type }}</td>
         <td>{{ f.size_display }}</td>
         <td>
-          <form method="POST" action="/admin/files/delete" style="display: inline;" onsubmit="return confirm('Delete this file?');">
+          <a href="/admin/files/download?filepath={{ f.rel_path }}" class="btn-sm btn-secondary" style="text-decoration: none; margin-right: 6px; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border); display: inline-block;">Download</a>
+          <form method="POST" action="/admin/files/delete" style="display: inline;" onsubmit="return confirm('Delete this item?');">
             <input type="hidden" name="filepath" value="{{ f.rel_path }}">
+            <input type="hidden" name="current_subpath" value="{{ current_subpath }}">
             <button type="submit" class="btn-sm btn-danger">Delete</button>
           </form>
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Shared photo folder is currently empty.</td></tr>
+      <tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 20px;">This folder is currently empty.</td></tr>
       {% endfor %}
     </tbody>
   </table>

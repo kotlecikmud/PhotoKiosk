@@ -3,18 +3,23 @@ import os
 import customtkinter as ctk
 from typing import Optional, List, Dict, Any
 
-from gui.theme import COLORS, FONTS
+from gui.theme import COLORS, FONTS, set_active_theme
 from gui.screens.home import HomeScreen
 from gui.screens.gallery import GalleryScreen
 from gui.screens.print_config import PrintConfigScreen
 from gui.screens.order_summary import OrderSummaryScreen
 from gui.screens.processing import ProcessingScreen, CompletionScreen
 from devices.monitor import DeviceMonitorDaemon
+from devices.session_manager import clean_temp_session_dir, clean_all_temp_sessions
+from backend.database import get_db_engine, SystemSetting
+from sqlalchemy.orm import sessionmaker
 
 
 class PhotoKioskApp(ctk.CTk):
     def __init__(self, fullscreen: bool = False):
         super().__init__()
+        self._load_active_theme()
+
         self.title("PhotoKiosk")
         self.geometry("1024x768")
         ctk.set_appearance_mode("dark")
@@ -26,10 +31,14 @@ class PhotoKioskApp(ctk.CTk):
         self.container.pack(fill="both", expand=True)
 
         # State storage across navigation
+        self.current_session_id: int = 1
         self.current_source_name: str = ""
         self.current_source_path: str = ""
         self.selected_photos: List[Dict[str, Any]] = []
         self.configured_items: List[Dict[str, Any]] = []
+
+        # Clean lingering temp sessions on startup
+        clean_all_temp_sessions()
 
         # Start device monitor daemon
         self.device_daemon = DeviceMonitorDaemon(self._on_device_event)
@@ -37,6 +46,17 @@ class PhotoKioskApp(ctk.CTk):
 
         # Open initial screen
         self.show_home_screen()
+
+    def _load_active_theme(self):
+        try:
+            engine = get_db_engine()
+            SessionLocal = sessionmaker(bind=engine)
+            with SessionLocal() as db:
+                th_setting = db.query(SystemSetting).filter_by(key="ui_theme").first()
+                if th_setting and th_setting.value:
+                    set_active_theme(th_setting.value)
+        except Exception:
+            pass
 
     def _clear_container(self):
         for w in self.container.winfo_children():
@@ -102,6 +122,10 @@ class PhotoKioskApp(ctk.CTk):
         screen.pack(fill="both", expand=True)
 
     def _on_order_completed(self, order_id: str, total_prints: int):
+        # Clean temp session folder after successful session
+        clean_temp_session_dir(self.current_session_id)
+        self.current_session_id += 1
+
         self._clear_container()
         screen = CompletionScreen(
             self.container,

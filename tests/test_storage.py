@@ -62,3 +62,52 @@ def test_admin_login_and_protection(api_client):
     dash = api_client.get("/admin/", cookies=cookie)
     assert dash.status_code == 200
     assert "System Overview" in dash.text
+
+    # Test settings update with source toggles
+    settings_res = api_client.post(
+        "/admin/settings",
+        data={
+            "default_dpi": "300",
+            "border_width_mm": "4.0",
+            "auto_orientation_matching": "true",
+            "source_iphone": "true",
+            "source_network": "true",
+            # Android, Removable, CD/DVD unchecked
+        },
+        cookies=cookie,
+        follow_redirects=False
+    )
+    assert settings_res.status_code == 303
+
+    # Test file manager browsing and download
+    shared_dir = Path("storage/shared")
+    sub_dir = shared_dir / "holiday_trip"
+    sub_dir.mkdir(parents=True, exist_ok=True)
+    sample_file = sub_dir / "beach.jpg"
+    sample_file.write_text("dummy-image-content")
+
+    # Browse subdirectory
+    files_view = api_client.get("/admin/files?path=holiday_trip", cookies=cookie)
+    assert files_view.status_code == 200
+    assert "beach.jpg" in files_view.text
+
+    # Download file
+    dl_res = api_client.get("/admin/files/download?filepath=holiday_trip/beach.jpg", cookies=cookie)
+    assert dl_res.status_code == 200
+    assert dl_res.content == b"dummy-image-content"
+
+    # Download folder as zip
+    dl_zip = api_client.get("/admin/files/download?filepath=holiday_trip", cookies=cookie)
+    assert dl_zip.status_code == 200
+    assert dl_zip.headers["content-type"] == "application/zip"
+
+    # Test changelog presence and version 0.0.2
+    changelog_p = Path("changelog.log")
+    assert changelog_p.exists()
+    assert "0.0.2" in changelog_p.read_text()
+
+    # Test theme switching
+    from gui.theme import THEMES, set_active_theme, COLORS
+    set_active_theme("emerald_green")
+    assert COLORS["primary"] == THEMES["emerald_green"]["primary"]
+    set_active_theme("midnight_blue")

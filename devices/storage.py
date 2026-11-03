@@ -2,8 +2,19 @@
 import subprocess
 import shutil
 import os
+import sys
 from pathlib import Path
 from typing import Optional, Dict, Any, List
+
+
+# Windows GetDriveType constants
+DRIVE_UNKNOWN = 0
+DRIVE_NO_ROOT_DIR = 1
+DRIVE_REMOVABLE = 2
+DRIVE_FIXED = 3
+DRIVE_REMOTE = 4
+DRIVE_CDROM = 5
+DRIVE_RAMDISK = 6
 
 
 class StorageManager:
@@ -53,18 +64,76 @@ class StorageManager:
             return False
 
     @staticmethod
+    def get_windows_drive_type(drive_letter: str) -> int:
+        """Returns Windows GetDriveType integer for a drive letter (e.g. 'E:\\')."""
+        if sys.platform != "win32":
+            return DRIVE_UNKNOWN
+        try:
+            import ctypes
+            root_path = f"{drive_letter.rstrip('\\')}\\"
+            return ctypes.windll.kernel32.GetDriveTypeW(root_path)
+        except Exception:
+            return DRIVE_UNKNOWN
+
+    @staticmethod
     def get_mounted_media_paths() -> List[Dict[str, str]]:
-        """Scans standard Linux mount points for removable media (/media, /mnt, /run/media)."""
+        """Scans available removable media paths on Windows and Linux."""
         detected = []
-        search_roots = ["/media", "/run/media", "/mnt"]
-        for root in search_roots:
-            p = Path(root)
-            if p.exists() and p.is_dir():
-                for sub in p.iterdir():
-                    if sub.is_dir() and not sub.name.startswith("."):
+
+        if sys.platform == "win32":
+            # Scan drive letters A-Z for removable drives
+            import string
+            for letter in string.ascii_uppercase:
+                root = f"{letter}:\\"
+                if os.path.exists(root):
+                    dtype = StorageManager.get_windows_drive_type(root)
+                    if dtype == DRIVE_REMOVABLE:
                         detected.append({
-                            "name": sub.name,
-                            "path": str(sub.resolve()),
+                            "name": f"USB Drive ({letter}:)",
+                            "path": root,
                             "type": "removable_storage",
                         })
+        else:
+            # Linux search paths
+            search_roots = ["/media", "/run/media", "/mnt"]
+            for root in search_roots:
+                p = Path(root)
+                if p.exists() and p.is_dir():
+                    for sub in p.iterdir():
+                        if sub.is_dir() and not sub.name.startswith("."):
+                            detected.append({
+                                "name": sub.name,
+                                "path": str(sub.resolve()),
+                                "type": "removable_storage",
+                            })
+
+        return detected
+
+    @staticmethod
+    def get_optical_media_paths() -> List[Dict[str, str]]:
+        """Scans optical disc drives (CD/DVD) on Windows and Linux."""
+        detected = []
+
+        if sys.platform == "win32":
+            import string
+            for letter in string.ascii_uppercase:
+                root = f"{letter}:\\"
+                if os.path.exists(root):
+                    dtype = StorageManager.get_windows_drive_type(root)
+                    if dtype == DRIVE_CDROM:
+                        detected.append({
+                            "name": f"CD/DVD Drive ({letter}:)",
+                            "path": root,
+                            "type": "optical_media",
+                        })
+        else:
+            search_roots = ["/media/cdrom", "/mnt/cdrom"]
+            for r in search_roots:
+                if os.path.exists(r) and os.path.isdir(r):
+                    detected.append({
+                        "name": "Disc (CD / DVD Drive)",
+                        "path": r,
+                        "type": "optical_media",
+                    })
+
         return detected

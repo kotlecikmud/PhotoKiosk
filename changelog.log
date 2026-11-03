@@ -1,0 +1,30 @@
+# PhotoKiosk Changelog
+
+## [0.0.2] - 2026-11-03
+
+### Added
+- **Windows Portable Devices (WPD) iPhone Photo Scanner**:
+  - Implemented production recursive iPhone photo discovery and enumeration based on `wp_iphone_scanner_prototype.py`.
+  - Windows Shell COM traversal (`Shell.Application` NameSpace 17) confined to dedicated COM worker thread.
+  - Multi-extension image and video classification matching prototype formats with case-insensitive matching.
+  - Distinct session tracking (`session_id`) and scan attempt tracking (`scan_id`) to prevent duplicate scans and discard stale events.
+  - Resilient error handling allowing directory enumeration to continue through restricted folders/files.
+- **Touchscreen Kiosk User Interface**:
+  - Initial photo source selection prompt ("Where should we look for images?") before initiating scanning.
+  - Full-fidelity scanning progress modal overlay showing "Scanning...", real-time found photos count, elapsed time, and current directory.
+  - Device authorization guidance banner displayed when zero photos are detected, prompting user to unlock device and trust computer or enable MTP file transfer.
+  - Post-scan date range filter dialog offering 1 Month, 3 Months, 6 Months, or All photos with calculated `YYYY-MM-DD - YYYY-MM-DD` date bounds.
+  - Automatic transition taking scanned device as source, staging thumbnails in temporary session storage (`storage/temp_sessions/session_<id>/`), and cleaning up temporary folders after order completion.
+- **External Removable Device Detection**:
+  - Windows removable drive detection using `GetDriveTypeW(DRIVE_REMOVABLE = 2)` to properly detect pendrives mounted as drive letters (e.g., `E:\`).
+  - Separation of optical media (`DRIVE_CDROM = 5`) from removable USB storage devices.
+- **Admin Panel Enhancements**:
+  - Configurable photo source toggles under Settings to enable or disable iPhone/iPad, Android, Removable Media, CD/DVD drives, and Network shared storage in the kiosk UI.
+  - Storage & File Manager subfolder browsing with directory breadcrumbs and parent navigation.
+  - Download functionality in File Manager allowing single-file downloads or compressed zip downloads for folders with path traversal security.
+- **Cross-UI Color Themes**:
+  - Predefined cohesive color palettes: `midnight_blue` (default), `emerald_green`, `sunset_amber`, and `graphite_dark`.
+  - Admin settings dropdown to change active theme, applying CSS variables dynamically across Web Admin and CustomTkinter Touchscreen GUI.
+
+## [0.0.1] - 2026-11-03
+- Initial release: Touchscreen Kiosk UI, FastAPI backend, 300 DPI image processing pipeline, and remote web administration.

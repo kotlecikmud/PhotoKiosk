@@ -67,7 +67,7 @@ class DeviceMonitorDaemon:
                     if is_conn and not self._iphone_connected:
                         self._iphone_connected = True
                         name = dev_name or "Apple iPhone"
-                        authoritative_scanner.on_device_connected(device_name=name, auto_scan=True)
+                        authoritative_scanner.on_device_connected(device_name=name, auto_scan=False)
                         self._notify("connected", {"device": name, "platform": "win32", "type": "iphone"})
                     elif not is_conn and self._iphone_connected:
                         self._iphone_connected = False

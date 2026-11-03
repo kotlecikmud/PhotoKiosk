@@ -11,6 +11,15 @@
   <h3>Print & Image Processing Configuration</h3>
   <form method="POST" action="/admin/settings" style="max-width: 500px;">
     <div class="form-group">
+      <label>UI Theme (Applied across Admin & Touchscreen)</label>
+      <select name="ui_theme">
+        {% for key, th in themes.items() %}
+          <option value="{{ key }}" {% if settings.get('ui_theme', 'midnight_blue') == key %}selected{% endif %}>{{ th.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group">
       <label>Default Output DPI</label>
       <input type="number" name="default_dpi" value="{{ settings.get('default_dpi', '300') }}" required>
     </div>
@@ -21,10 +30,35 @@
     <div class="form-group">
       <label>Auto-Orientation Matching</label>
       <select name="auto_orientation_matching">
-        <option value="true" {% if settings.get('auto_orientation_matching') == 'true' %}selected{% endif %}>Enabled (Match photo aspect ratio to paper)</option>
+        <option value="true" {% if settings.get('auto_orientation_matching', 'true') == 'true' %}selected{% endif %}>Enabled (Match photo aspect ratio to paper)</option>
         <option value="false" {% if settings.get('auto_orientation_matching') == 'false' %}selected{% endif %}>Disabled (Keep paper orientation fixed)</option>
       </select>
     </div>
+
+    <h4 style="margin-top: 24px; margin-bottom: 12px; color: var(--primary);">Available Photo Sources in Touchscreen UI</h4>
+    <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+      <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+        <input type="checkbox" name="source_iphone" value="true" {% if settings.get('source_iphone', 'true') == 'true' %}checked{% endif %}>
+        <span>Apple iPhone / iPad</span>
+      </label>
+      <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+        <input type="checkbox" name="source_android" value="true" {% if settings.get('source_android', 'true') == 'true' %}checked{% endif %}>
+        <span>Android Devices</span>
+      </label>
+      <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+        <input type="checkbox" name="source_removable" value="true" {% if settings.get('source_removable', 'true') == 'true' %}checked{% endif %}>
+        <span>Removable Media (USB sticks / Portable HDD/SSD)</span>
+      </label>
+      <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+        <input type="checkbox" name="source_cddvd" value="true" {% if settings.get('source_cddvd', 'true') == 'true' %}checked{% endif %}>
+        <span>CD / DVD Drive</span>
+      </label>
+      <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+        <input type="checkbox" name="source_network" value="true" {% if settings.get('source_network', 'true') == 'true' %}checked{% endif %}>
+        <span>Network / Shared Photos</span>
+      </label>
+    </div>
+
     <button type="submit" style="margin-top: 12px;">Save Settings</button>
   </form>
 </div>
