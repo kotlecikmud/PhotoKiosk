@@ -1,7 +1,7 @@
 """Hardware device monitoring daemon with debouncing for udev block and usb events.
 
 Supports both Linux (pyudev) and Windows (WPD polling) device monitoring,
-automatically notifying the authoritative iPhone scanner.
+automatically notifying the authoritative mobile (iPhone/Android) scanner.
 """
 import sys
 import threading
@@ -29,6 +29,8 @@ class DeviceMonitorDaemon:
         self._thread: Optional[threading.Thread] = None
         self._last_event_time: Dict[str, float] = {}
         self._iphone_connected: bool = False
+        self._connected_device_name: str = ""
+        self._connected_device_type: str = ""
 
     def start(self):
         self.running = True
@@ -63,16 +65,33 @@ class DeviceMonitorDaemon:
         try:
             while self.running:
                 try:
-                    is_conn, dev_name = WindowsWPDHandler.check_iphone_connected()
+                    is_conn, dev_name, dev_type = WindowsWPDHandler.check_mobile_connected()
                     if is_conn and not self._iphone_connected:
                         self._iphone_connected = True
-                        name = dev_name or "Apple iPhone"
-                        authoritative_scanner.on_device_connected(device_name=name, auto_scan=False)
-                        self._notify("connected", {"device": name, "platform": "win32", "type": "iphone"})
+                        self._connected_device_name = dev_name or "Mobile Phone"
+                        self._connected_device_type = dev_type or "mobile"
+                        authoritative_scanner.on_device_connected(
+                            device_name=self._connected_device_name,
+                            auto_scan=False,
+                            device_type=self._connected_device_type
+                        )
+                        self._notify("connected", {
+                            "device": self._connected_device_name,
+                            "platform": "win32",
+                            "type": self._connected_device_type
+                        })
                     elif not is_conn and self._iphone_connected:
                         self._iphone_connected = False
+                        name = self._connected_device_name or "Mobile Phone"
+                        dtype = self._connected_device_type or "mobile"
+                        self._connected_device_name = ""
+                        self._connected_device_type = ""
                         authoritative_scanner.on_device_disconnected()
-                        self._notify("disconnected", {"device": "Apple iPhone", "platform": "win32", "type": "iphone"})
+                        self._notify("disconnected", {
+                            "device": name,
+                            "platform": "win32",
+                            "type": dtype
+                        })
                 except Exception:
                     pass
 
@@ -100,22 +119,44 @@ class DeviceMonitorDaemon:
                 if not self.running:
                     break
 
-                dev_node = device.device_node or device.sys_path
+                dev_path = device.device_node or device.device_path
                 now = time.time()
-                last_time = self._last_event_time.get(dev_node, 0)
+                last_time = self._last_event_time.get(dev_path, 0.0)
+
                 if now - last_time < self.debounce_seconds:
-                    continue  # Debounce duplicate events
+                    continue
 
-                self._last_event_time[dev_node] = now
+                self._last_event_time[dev_path] = now
 
-                if action == "add":
-                    info = {
-                        "device_node": dev_node,
-                        "subsystem": device.subsystem,
-                        "device_type": device.device_type,
-                    }
-                    self._notify("connected", info)
+                if action in ("add", "change"):
+                    self._handle_device_added(device)
                 elif action == "remove":
-                    self._notify("disconnected", {"device_node": dev_node})
+                    self._handle_device_removed(device)
+
         except Exception:
             pass
+
+    def _handle_device_added(self, device):
+        dev_type = device.get("DEVTYPE")
+        subsystem = device.subsystem
+
+        if subsystem == "block" and dev_type in ("disk", "partition"):
+            node = device.device_node
+            mount_path = StorageManager.mount_block_device(node)
+            if mount_path:
+                self._notify("mounted", {"node": node, "mount_path": mount_path, "type": "usb_storage"})
+
+        elif subsystem == "usb":
+            # Check for smartphone MTP / iOS
+            ios_status = AppleIOSHandler.inspect_ios_device()
+            if ios_status.get("connected"):
+                self._notify("connected", {"type": "ios", "status": ios_status})
+                return
+
+            android_status = AndroidHandler.inspect_mtp_device()
+            if android_status.get("connected"):
+                self._notify("connected", {"type": "android", "status": android_status})
+
+    def _handle_device_removed(self, device):
+        dev_path = device.device_node or device.device_path
+        self._notify("removed", {"path": dev_path})

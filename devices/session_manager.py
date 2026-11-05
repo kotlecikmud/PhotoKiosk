@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Dict, Any, List, Tuple
 from PIL import Image, ImageDraw, ImageFont
 
+from devices.classifier import classify_media
+
 
 def get_date_range_bounds(now: datetime = None) -> Dict[str, Dict[str, Any]]:
     """
@@ -116,6 +118,7 @@ def stage_session_thumbnails(
     """
     Filters photos by selected date range, and prepares valid image files
     in the temporary session directory so that GalleryScreen can immediately load them.
+    Preserves and propagates category and album metadata.
     """
     filtered = filter_photos_by_date_range(photos, range_key, now=now)
     temp_dir = get_temp_session_dir(session_id, base_dir=base_dir)
@@ -138,11 +141,23 @@ def stage_session_thumbnails(
             # Staged placeholder thumbnail for WPD items ready for on-demand fetch
             _create_placeholder_thumbnail(target_path, fname)
 
+        cat = p.get("category")
+        cat_name = p.get("category_name")
+        album = p.get("album")
+        if not cat or not cat_name:
+            cat_info = classify_media(fname, p.get("relative_path") or source_path or fname)
+            cat = cat or cat_info["category"]
+            cat_name = cat_name or cat_info["category_name"]
+            album = album or cat_info["album"]
+
         staged_photos.append({
             "filename": fname,
             "filepath": str(target_path.resolve()),
             "size_bytes": target_path.stat().st_size if target_path.exists() else 0,
             "modified_time": p.get("modified_time", 0.0),
+            "category": cat,
+            "category_name": cat_name,
+            "album": album,
         })
 
     return staged_photos

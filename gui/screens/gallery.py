@@ -90,6 +90,10 @@ class GalleryScreen(ctk.CTkFrame):
         self.dropdown_popup: Optional[ctk.CTkFrame] = None
         self.dropdown_timer_id: Optional[str] = None
 
+        # Album / Category Filtering
+        self.active_category: str = "all"
+        self.category_buttons: Dict[str, ctk.CTkButton] = {}
+
         self._build_ui()
         get_i18n().subscribe(self._on_locale_changed)
         self._load_photos_async()
@@ -104,6 +108,7 @@ class GalleryScreen(ctk.CTkFrame):
     def _on_locale_changed(self, lang: str):
         if self.winfo_exists():
             self._update_localized_texts()
+            self._render_category_bar()
             self._render_editor()
 
     def _get_price(self, size_name: str, paper_type: str) -> float:
@@ -249,8 +254,17 @@ class GalleryScreen(ctk.CTkFrame):
         self.left_pane = ctk.CTkFrame(self.body, fg_color=COLORS["bg_card"], corner_radius=12)
         self.left_pane.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
 
+        # Album / Category Filter Bar
+        self.category_bar = ctk.CTkScrollableFrame(
+            self.left_pane,
+            fg_color="transparent",
+            orientation="horizontal",
+            height=44
+        )
+        self.category_bar.pack(fill="x", padx=10, pady=(8, 2))
+
         self.gallery_frame = ctk.CTkScrollableFrame(self.left_pane, fg_color="transparent")
-        self.gallery_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        self.gallery_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
         self.gallery_frame.bind("<Button-1>", lambda e: self._close_dropdown_popup())
 
         self.status_lbl = ctk.CTkLabel(
@@ -316,10 +330,97 @@ class GalleryScreen(ctk.CTkFrame):
         for p in self.photos:
             self._init_photo_config(p["filepath"])
 
+        self._render_category_bar()
+
         # Auto-select the first photo in the editor
         self.active_photo_idx = 0
         self._render_grid()
         self._render_editor()
+
+    def _render_category_bar(self):
+        for w in self.category_bar.winfo_children():
+            w.destroy()
+        self.category_buttons.clear()
+
+        if not self.photos:
+            return
+
+        # Calculate counts per category
+        cat_counts: Dict[str, int] = {}
+        for p in self.photos:
+            cat = p.get("category", "other")
+            cat_counts[cat] = cat_counts.get(cat, 0) + 1
+
+        category_order = [
+            "all", "camera", "whatsapp", "messenger", "screenshots",
+            "instagram", "telegram", "downloads", "snapchat", "twitter", "other"
+        ]
+
+        existing_cats = ["all"]
+        for c in category_order:
+            if c != "all" and cat_counts.get(c, 0) > 0:
+                existing_cats.append(c)
+
+        for c in cat_counts:
+            if c not in existing_cats:
+                existing_cats.append(c)
+
+        for c in existing_cats:
+            count = len(self.photos) if c == "all" else cat_counts.get(c, 0)
+            if c == "all":
+                label_text = f"{t('gallery.album_all')} ({count})"
+            else:
+                cat_label = t(f"gallery.category_{c}", default=c.title())
+                label_text = f"{cat_label} ({count})"
+
+            is_active = (self.active_category == c)
+            btn = ctk.CTkButton(
+                self.category_bar,
+                text=label_text,
+                font=FONTS["body_bold"] if is_active else FONTS["small"],
+                fg_color=COLORS["primary"] if is_active else COLORS["surface"],
+                hover_color=COLORS["primary_hover"] if is_active else COLORS["border"],
+                text_color=COLORS["text"],
+                height=32,
+                corner_radius=16,
+                command=lambda k=c: self._select_category(k)
+            )
+            btn.pack(side="left", padx=4, pady=2)
+            self.category_buttons[c] = btn
+
+    def _select_category(self, cat_key: str):
+        self._close_dropdown_popup()
+        self.active_category = cat_key
+
+        # Update button styles
+        for c, btn in self.category_buttons.items():
+            is_active = (c == cat_key)
+            btn.configure(
+                fg_color=COLORS["primary"] if is_active else COLORS["surface"],
+                font=FONTS["body_bold"] if is_active else FONTS["small"]
+            )
+
+        visible = self._get_visible_photos()
+        if visible:
+            visible_indices = [idx for idx, _ in visible]
+            if self.active_photo_idx not in visible_indices:
+                self.active_photo_idx = visible_indices[0]
+                self._render_editor()
+        else:
+            self.active_photo_idx = None
+            self._build_editor_placeholder()
+
+        self._render_grid()
+        self._update_selection_states()
+
+    def _get_visible_photos(self) -> List[Tuple[int, Dict[str, Any]]]:
+        """Returns list of (original_index, photo_dict) matching active category/album."""
+        if self.active_category == "all":
+            return list(enumerate(self.photos))
+        return [
+            (i, p) for i, p in enumerate(self.photos)
+            if p.get("category") == self.active_category or p.get("album") == self.active_category
+        ]
 
     def _render_grid(self):
         for w in self.gallery_frame.winfo_children():
@@ -346,9 +447,20 @@ class GalleryScreen(ctk.CTkFrame):
             thumb_size = (28, 24)
             card_pad = 2
 
-        for idx, photo in enumerate(self.photos):
-            row = idx // columns
-            col = idx % columns
+        visible = self._get_visible_photos()
+        if not visible:
+            empty_lbl = ctk.CTkLabel(
+                self.gallery_frame,
+                text=t("gallery.no_photos"),
+                font=FONTS["subtitle"],
+                text_color=COLORS["text_muted"]
+            )
+            empty_lbl.pack(pady=40)
+            return
+
+        for grid_idx, (idx, photo) in enumerate(visible):
+            row = grid_idx // columns
+            col = grid_idx % columns
 
             is_active = (idx == self.active_photo_idx)
             card_color = COLORS["primary_hover"] if is_active else COLORS["surface"]

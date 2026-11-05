@@ -1,7 +1,8 @@
-"""Authoritative Event-Driven iPhone Photo Scanner and File Classifier.
+"""Authoritative Event-Driven Smartphone (iPhone / Android) Photo Scanner and File Classifier.
 
-This module provides the central orchestration for iPhone detection, recursive scanning,
-file classification (images, videos, breakdown by extension), session tracking, throttling,
+This module provides the central orchestration for smartphone detection, recursive scanning,
+file classification (images, videos, breakdown by extension and app source/album: Camera, WhatsApp,
+Messenger, Screenshots, Instagram, Telegram, Downloads, etc.), session tracking, throttling,
 and multi-subscriber event publishing.
 """
 import copy
@@ -13,6 +14,19 @@ import time
 from typing import Dict, Any, List, Set, Optional, Callable
 
 from devices.wpd_ios import WindowsWPDHandler, is_win32_com_available
+from devices.classifier import (
+    classify_media,
+    CATEGORY_CAMERA,
+    CATEGORY_WHATSAPP,
+    CATEGORY_MESSENGER,
+    CATEGORY_SCREENSHOTS,
+    CATEGORY_INSTAGRAM,
+    CATEGORY_TELEGRAM,
+    CATEGORY_DOWNLOADS,
+    CATEGORY_SNAPCHAT,
+    CATEGORY_TWITTER,
+    CATEGORY_OTHER,
+)
 
 
 # Configurable file classification constants matching wp_iphone_scanner_prototype.py
@@ -63,7 +77,7 @@ logger = logging.getLogger("photokiosk.scanner")
 
 
 class IPhonePhotoScanner:
-    """Authoritative singleton scanner for iPhone photo storage."""
+    """Authoritative singleton scanner for iPhone & Android photo storage."""
 
     def __init__(self, throttle_interval_sec: float = 0.15):
         self._lock = threading.RLock()
@@ -78,6 +92,7 @@ class IPhonePhotoScanner:
         # Authoritative state
         self._state: Dict[str, Any] = {
             "device": "",
+            "device_type": "mobile",
             "connection_status": "disconnected",
             "scan_status": ScanStatus.DISCONNECTED.value,
             "current_path": "",
@@ -87,6 +102,8 @@ class IPhonePhotoScanner:
             "folders_scanned": 0,
             "errors": 0,
             "images_by_extension": {},
+            "images_by_category": {},
+            "albums": {},
             "session_id": 0,
             "scan_id": 0,
             "start_time": 0.0,
@@ -128,15 +145,24 @@ class IPhonePhotoScanner:
         with self._lock:
             return copy.deepcopy(self._state)
 
-    def on_device_connected(self, device_name: str = "Apple iPhone", auto_scan: bool = True) -> int:
+    def on_device_connected(
+        self,
+        device_name: str = "Apple iPhone",
+        auto_scan: bool = True,
+        device_type: Optional[str] = None
+    ) -> int:
         """
-        Called when an iPhone connection is detected.
+        Called when a smartphone connection is detected.
         Creates a new session and new scan_id, resets counters, and starts a scan.
         """
         with self._lock:
             # If already connected and scanning same device, ignore duplicate connection trigger
             if self._state["connection_status"] == "connected" and self._state["device"] == device_name:
                 return self._session_id
+
+            # Determine device type
+            if not device_type:
+                device_type = "iphone" if "iphone" in device_name.lower() or "ipad" in device_name.lower() else "android"
 
             # Stop any existing scan
             self._cancel_scan = True
@@ -147,6 +173,7 @@ class IPhonePhotoScanner:
 
             self._state = {
                 "device": device_name,
+                "device_type": device_type,
                 "connection_status": "connected",
                 "scan_status": ScanStatus.CONNECTED.value,
                 "current_path": "Waiting to scan...",
@@ -156,6 +183,8 @@ class IPhonePhotoScanner:
                 "folders_scanned": 0,
                 "errors": 0,
                 "images_by_extension": {},
+                "images_by_category": {},
+                "albums": {},
                 "session_id": session_id,
                 "scan_id": scan_id,
                 "start_time": 0.0,
@@ -179,6 +208,7 @@ class IPhonePhotoScanner:
             self._scan_id += 1
             self._state = {
                 "device": "",
+                "device_type": "mobile",
                 "connection_status": "disconnected",
                 "scan_status": ScanStatus.DISCONNECTED.value,
                 "current_path": "",
@@ -188,6 +218,8 @@ class IPhonePhotoScanner:
                 "folders_scanned": 0,
                 "errors": 0,
                 "images_by_extension": {},
+                "images_by_category": {},
+                "albums": {},
                 "session_id": self._session_id,
                 "scan_id": self._scan_id,
                 "start_time": 0.0,
@@ -200,12 +232,12 @@ class IPhonePhotoScanner:
 
     def request_rescan(self) -> Dict[str, Any]:
         """
-        Explicitly triggers a rescan if an iPhone is connected and not currently scanning.
+        Explicitly triggers a rescan if a device is connected and not currently scanning.
         Generates a new scan_id while preserving session_id.
         """
         with self._lock:
             if self._state["connection_status"] != "connected":
-                raise ValueError("No iPhone is currently connected.")
+                raise ValueError("No phone is currently connected.")
 
             if self._state["scan_status"] == ScanStatus.SCANNING.value:
                 raise RuntimeError("Scan is already in progress.")
@@ -214,15 +246,19 @@ class IPhonePhotoScanner:
             self._scan_id += 1
             scan_id = self._scan_id
             session_id = self._session_id
+            dev_name = self._state.get("device", "Mobile Device")
+            dev_type = self._state.get("device_type", "mobile")
 
             self._state["scan_status"] = ScanStatus.CONNECTED.value
-            self._state["current_path"] = "Apple iPhone\\Internal Storage"
+            self._state["current_path"] = f"{dev_name}\\Internal Storage"
             self._state["images_found"] = 0
             self._state["videos_found"] = 0
             self._state["files_scanned"] = 0
             self._state["folders_scanned"] = 0
             self._state["errors"] = 0
             self._state["images_by_extension"] = {}
+            self._state["images_by_category"] = {}
+            self._state["albums"] = {}
             self._state["scan_id"] = scan_id
             self._state["start_time"] = 0.0
             self._state["elapsed_seconds"] = 0.0
@@ -248,9 +284,10 @@ class IPhonePhotoScanner:
             if self._session_id != session_id or self._scan_id != scan_id:
                 return
 
+            dev_name = self._state.get("device", "Mobile Device")
             self._cancel_scan = False
             self._state["scan_status"] = ScanStatus.SCANNING.value
-            self._state["current_path"] = "Apple iPhone\\Internal Storage"
+            self._state["current_path"] = f"{dev_name}\\Internal Storage"
             self._state["start_time"] = time.time()
             self._state["elapsed_seconds"] = 0.0
             self._state["needs_authorization"] = False
@@ -277,34 +314,67 @@ class IPhonePhotoScanner:
             with self._lock:
                 if self._session_id != session_id or self._scan_id != scan_id or self._cancel_scan:
                     return
+                current_device_name = self._state.get("device", "")
 
-            # Discover iPhone & Internal Storage
-            iphone = WindowsWPDHandler.find_iphone_device()
-            if not iphone:
-                logger.error("iPhone device not found in Shell COM tree.")
+            # Discover phone device (iPhone or Android)
+            phone = None
+            if "iphone" in current_device_name.lower() or "ipad" in current_device_name.lower():
+                phone = WindowsWPDHandler.find_iphone_device()
+            else:
+                phone = WindowsWPDHandler.find_mobile_device()
+                if not phone:
+                    phone = WindowsWPDHandler.find_iphone_device()
+
+            if not phone:
+                logger.error("Phone device not found in Shell COM tree.")
                 with self._lock:
                     if self._session_id == session_id and self._scan_id == scan_id:
                         self._state["scan_status"] = ScanStatus.ERROR.value
                         self._state["errors"] += 1
-                        self._state["current_path"] = "Error: iPhone not found"
+                        self._state["current_path"] = "Error: Device not found"
                 self._publish_event(ScannerEvent.SCAN_ERROR)
                 return
 
-            storage = WindowsWPDHandler.find_internal_storage(iphone)
-            if not storage:
-                logger.error("Internal Storage folder not found on iPhone.")
+            # Discover all storage folders (Internal Storage, SD Card, etc.)
+            storages = WindowsWPDHandler.find_device_storages(phone)
+            if not storages:
+                # Fallback to find_internal_storage
+                single_storage = WindowsWPDHandler.find_internal_storage(phone)
+                if single_storage:
+                    storages = [single_storage]
+
+            if not storages:
+                logger.error("No accessible storage folders found on device.")
                 with self._lock:
                     if self._session_id == session_id and self._scan_id == scan_id:
                         self._state["scan_status"] = ScanStatus.ERROR.value
                         self._state["errors"] += 1
-                        self._state["current_path"] = "Error: Internal Storage inaccessible"
+                        self._state["current_path"] = "Error: Storage inaccessible"
                 self._publish_event(ScannerEvent.SCAN_ERROR)
                 return
 
-            self._execute_scan_loop(storage, session_id, scan_id)
+            # Scan each storage folder found
+            for storage_folder in storages:
+                with self._lock:
+                    if self._session_id != session_id or self._scan_id != scan_id or self._cancel_scan:
+                        return
+                self._execute_scan_loop(storage_folder, session_id, scan_id)
+
+            # Finished scan successfully across all storages
+            with self._lock:
+                if self._session_id != session_id or self._scan_id != scan_id or self._cancel_scan:
+                    return
+                if self._state["start_time"] > 0:
+                    self._state["elapsed_seconds"] = round(time.time() - self._state["start_time"], 1)
+                self._state["current_path"] = "Scan complete"
+                self._state["scan_status"] = ScanStatus.COMPLETE.value
+                if self._state["images_found"] == 0:
+                    self._state["needs_authorization"] = True
+
+            self._publish_event(ScannerEvent.SCAN_COMPLETED)
 
         except Exception as e:
-            logger.exception(f"Unexpected error during iPhone COM scan: {e}")
+            logger.exception(f"Unexpected error during phone COM scan: {e}")
             with self._lock:
                 if self._session_id == session_id and self._scan_id == scan_id:
                     self._state["scan_status"] = ScanStatus.ERROR.value
@@ -348,12 +418,32 @@ class IPhonePhotoScanner:
                         self._state["images_found"] += 1
                         ext_map = self._state["images_by_extension"]
                         ext_map[ext] = ext_map.get(ext, 0) + 1
+
+                        # Source / Album classification
+                        cat = event.get("category")
+                        cat_name = event.get("category_name")
+                        album = event.get("album")
+                        if not cat or not cat_name or not album:
+                            cat_info = classify_media(event.get("name", ""), event.get("relative_path", ""))
+                            cat = cat_info["category"]
+                            cat_name = cat_info["category_name"]
+                            album = cat_info["album"]
+
+                        cat_map = self._state["images_by_category"]
+                        cat_map[cat] = cat_map.get(cat, 0) + 1
+
+                        album_map = self._state["albums"]
+                        album_map[album] = album_map.get(album, 0) + 1
+
                         self._state["discovered_photos"].append({
                             "filename": event.get("name", ""),
                             "relative_path": event.get("relative_path", ""),
                             "extension": ext,
                             "modified_time": event.get("modified_time", 0.0),
                             "size_bytes": event.get("size_bytes", 0),
+                            "category": cat,
+                            "category_name": cat_name,
+                            "album": album,
                         })
                     elif is_video_extension(ext):
                         self._state["videos_found"] += 1
@@ -367,20 +457,6 @@ class IPhonePhotoScanner:
             if now - last_publish_time >= self.throttle_interval_sec:
                 last_publish_time = now
                 self._publish_event(ScannerEvent.SCAN_PROGRESS)
-
-        # Finished scan successfully
-        with self._lock:
-            if self._session_id != session_id or self._scan_id != scan_id or self._cancel_scan:
-                return
-            if self._state["start_time"] > 0:
-                self._state["elapsed_seconds"] = round(time.time() - self._state["start_time"], 1)
-            self._state["current_path"] = "Scan complete"
-            self._state["scan_status"] = ScanStatus.COMPLETE.value
-            # Check if 0 images found on connected phone
-            if self._state["images_found"] == 0:
-                self._state["needs_authorization"] = True
-
-        self._publish_event(ScannerEvent.SCAN_COMPLETED)
 
     def _run_simulated_or_stub_scan(self, session_id: int, scan_id: int):
         """Fallback scan for environments where Windows COM is not present."""

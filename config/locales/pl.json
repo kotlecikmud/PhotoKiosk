@@ -56,7 +56,9 @@
     "filter_1_month": "Ostatni 1 miesiąc",
     "filter_3_months": "Ostatnie 3 miesiące",
     "filter_6_months": "Ostatnie 6 miesięcy",
-    "filter_all": "Wszystkie zdjęcia ({count})"
+    "filter_all": "Wszystkie zdjęcia ({count})",
+    "phone_title": "📱 {name} — Skaner",
+    "categories_summary": "Źródła: {summary}"
   },
   "gallery": {
     "btn_sources": "← Źródła",
@@ -95,7 +97,20 @@
     "canvas_format": "Podgląd formatu",
     "active_badge": "AKTYWNY",
     "tap_to_preview": "Kliknij by podejrzeć",
-    "no_sizes_added": "Brak formatów. Kliknij + Dodaj format."
+    "no_sizes_added": "Brak formatów. Kliknij + Dodaj format.",
+    "album_all": "Wszystkie",
+    "category_all": "Wszystkie",
+    "category_camera": "Aparat",
+    "category_whatsapp": "WhatsApp",
+    "category_messenger": "Messenger",
+    "category_screenshots": "Zrzuty ekranu",
+    "category_instagram": "Instagram",
+    "category_telegram": "Telegram",
+    "category_downloads": "Pobrane",
+    "category_snapchat": "Snapchat",
+    "category_twitter": "Twitter / X",
+    "category_other": "Inne",
+    "source_label": "Źródło"
   },
   "crop_modes": {
     "fill_in": "Wypełnij (Kadrowanie)",

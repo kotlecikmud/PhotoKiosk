@@ -310,7 +310,7 @@ class HomeScreen(ctk.CTkFrame):
             else:
                 self.scanner_card.pack(fill="x", padx=40, pady=(0, 10))
 
-        self.scanner_title_lbl.configure(text=f"📱 {device} — Photo Scanner")
+        self.scanner_title_lbl.configure(text=t("scanner.phone_title", name=device))
         self.scanner_status_badge.configure(text=scan_status)
 
         current_path = state.get("current_path") or "Apple iPhone\\Internal Storage"
@@ -337,12 +337,21 @@ class HomeScreen(ctk.CTkFrame):
         elif scan_status == ScanStatus.COMPLETE.value:
             self._hide_scanning_overlay()
             self.scanner_rescan_btn.configure(state="normal")
+            by_cat = state.get("images_by_category", {})
             by_ext = state.get("images_by_extension", {})
             current_scan_id = state.get("scan_id", 0)
 
-            if by_ext:
-                parts = [f"{ext}: {count}" for ext, count in sorted(by_ext.items())]
-                self.scanner_breakdown_lbl.configure(text=t("scanner.image_breakdown", breakdown=", ".join(parts)))
+            if images > 0:
+                summary_parts = []
+                if by_cat:
+                    for cat_key, count in sorted(by_cat.items(), key=lambda x: -x[1]):
+                        cat_label = t(f"gallery.category_{cat_key}", default=cat_key.title())
+                        summary_parts.append(f"{cat_label}: {count}")
+                elif by_ext:
+                    summary_parts = [f"{ext}: {count}" for ext, count in sorted(by_ext.items())]
+
+                summary_str = " • ".join(summary_parts)
+                self.scanner_breakdown_lbl.configure(text=t("scanner.categories_summary", summary=summary_str))
                 self.scanner_auth_hint_lbl.pack_forget()
 
                 # Trigger date range filter dialog once per completed scan
@@ -492,14 +501,21 @@ class HomeScreen(ctk.CTkFrame):
         except Exception:
             pass
 
-        # 0. Connected Phone / iPhone device (if connected and enabled)
-        if enabled_sources.get("source_iphone", True):
-            scanner_state = authoritative_scanner.get_state()
-            if scanner_state.get("connection_status") == "connected":
-                dev_name = scanner_state.get("device") or "Apple iPhone"
+        # 0. Connected Phone / Mobile device (iPhone or Android if enabled)
+        scanner_state = authoritative_scanner.get_state()
+        if scanner_state.get("connection_status") == "connected":
+            dev_type = scanner_state.get("device_type", "iphone")
+            should_show = (
+                (dev_type == "iphone" and enabled_sources.get("source_iphone", True)) or
+                (dev_type != "iphone" and enabled_sources.get("source_android", True)) or
+                enabled_sources.get("source_iphone", True) or
+                enabled_sources.get("source_android", True)
+            )
+            if should_show:
+                dev_name = scanner_state.get("device") or "Mobile Phone"
                 self._add_source_button(
                     name=f"📱 {dev_name}",
-                    path="wpd_iphone",
+                    path="wpd_mobile",
                     type_label=t("app.connected_mobile"),
                     action_text=t("app.scan_device_btn"),
                     on_click=self._start_scanning_source

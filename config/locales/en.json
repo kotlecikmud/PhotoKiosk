@@ -56,7 +56,9 @@
     "filter_1_month": "Past 1 Month",
     "filter_3_months": "Past 3 Months",
     "filter_6_months": "Past 6 Months",
-    "filter_all": "All Photos ({count})"
+    "filter_all": "All Photos ({count})",
+    "phone_title": "📱 {name} — Scanner",
+    "categories_summary": "Sources: {summary}"
   },
   "gallery": {
     "btn_sources": "← Sources",
@@ -95,7 +97,20 @@
     "canvas_format": "Canvas Preview",
     "active_badge": "ACTIVE",
     "tap_to_preview": "Tap to preview",
-    "no_sizes_added": "No print formats. Click + Add Size."
+    "no_sizes_added": "No print formats. Click + Add Size.",
+    "album_all": "All",
+    "category_all": "All",
+    "category_camera": "Camera",
+    "category_whatsapp": "WhatsApp",
+    "category_messenger": "Messenger",
+    "category_screenshots": "Screenshots",
+    "category_instagram": "Instagram",
+    "category_telegram": "Telegram",
+    "category_downloads": "Downloads",
+    "category_snapchat": "Snapchat",
+    "category_twitter": "Twitter / X",
+    "category_other": "Other",
+    "source_label": "Source"
   },
   "crop_modes": {
     "fill_in": "Fill-in (Crop)",
