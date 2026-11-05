@@ -87,7 +87,7 @@ COLORS = dict(THEMES[CURRENT_THEME_KEY])
 
 def set_active_theme(theme_key: str):
     """Sets active theme and updates global COLORS dictionary."""
-    global CURRENT_THEME_KEY, COLORS
+    global CURRENT_THEME_KEY
     if theme_key in THEMES:
         CURRENT_THEME_KEY = theme_key
         COLORS.clear()
@@ -105,3 +105,33 @@ TOUCH_SIZES = {
     "border_radius": 12,
     "icon_size": 28,
 }
+
+
+# Gallery / editor layout constants (no magic numbers inside widgets)
+GALLERY = {
+    "grid_gap": 4,
+    "grid_prefetch_viewports": 1.0,   # extra viewport heights kept loaded above/below
+    "badge_radius": 11,
+    "badge_radius_small": 8,
+    "small_tile_width": 60,
+    "active_border": 3,
+    "size_card_width": 145,
+    "size_card_height": 215,
+    "cards_row_height": 280,
+    "preview_min_w": 480,
+    "preview_max_w": 700,
+    "preview_min_h": 360,
+    "preview_max_h": 500,
+    "dropdown_autoclose_ms": 2000,
+}
+
+
+def lighten(hex_color: str, amount: float = 0.08) -> str:
+    """Return ``hex_color`` blended towards white by ``amount`` (0..1)."""
+    h = hex_color.lstrip("#")
+    if len(h) != 6:
+        return hex_color
+    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    r, g, b = (int(c + (255 - c) * amount) for c in (r, g, b))
+    return f"#{r:02x}{g:02x}{b:02x}"
+

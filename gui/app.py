@@ -1,7 +1,6 @@
 """CustomTkinter PhotoKiosk Touchscreen Application Controller."""
-import os
 import customtkinter as ctk
-from typing import Optional, List, Dict, Any, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 from gui.theme import COLORS, FONTS, set_active_theme
 from gui.screens.home import HomeScreen
@@ -35,6 +34,7 @@ class PhotoKioskApp(ctk.CTk):
         self.current_source_path: str = ""
         self.session_photo_configs: Dict[str, Dict[str, Any]] = {}
         self.session_selected_indices: Set[int] = set()
+        self.session_card_sizes: Optional[List[str]] = None
         self.configured_items: List[Dict[str, Any]] = []
 
         # Clean lingering temp sessions on startup
@@ -58,30 +58,37 @@ class PhotoKioskApp(ctk.CTk):
         except Exception:
             pass
 
-    def _clear_container(self):
-        for w in self.container.winfo_children():
+    def _show_screen(self, factory: Callable[[], ctk.CTkFrame]) -> None:
+        """Swap screens without an empty frame in between (no white/blank flash).
+
+        The new screen is created and packed *before* the old ones are destroyed,
+        so Tk only ever repaints from old -> new.
+        """
+        old = list(self.container.winfo_children())
+        screen = factory()
+        screen.pack(fill="both", expand=True)
+        for w in old:
             w.destroy()
 
     def show_home_screen(self):
-        self._clear_container()
         # Reset session storage on returning to home screen (new session)
         self.session_photo_configs = {}
         self.session_selected_indices = set()
+        self.session_card_sizes = None
         self.configured_items = []
-        screen = HomeScreen(self.container, on_source_selected=self._on_source_selected)
-        screen.pack(fill="both", expand=True)
+        self._show_screen(lambda: HomeScreen(self.container, on_source_selected=self._on_source_selected))
 
     def _on_source_selected(self, source_name: str, source_path: str):
         self.current_source_name = source_name
         self.current_source_path = source_path
         self.session_photo_configs = {}
         self.session_selected_indices = set()
+        self.session_card_sizes = None
         self.configured_items = []
         self.show_gallery_screen()
 
     def show_gallery_screen(self):
-        self._clear_container()
-        screen = GalleryScreen(
+        self._show_screen(lambda: GalleryScreen(
             self.container,
             source_name=self.current_source_name,
             source_path=self.current_source_path,
@@ -90,8 +97,8 @@ class PhotoKioskApp(ctk.CTk):
             on_proceed_to_summary=self._on_proceed_to_summary,
             initial_photo_configs=self.session_photo_configs,
             initial_selected_indices=self.session_selected_indices,
-        )
-        screen.pack(fill="both", expand=True)
+            initial_session_card_sizes=self.session_card_sizes,
+        ))
 
     def _on_proceed_to_summary(self, configured_items: List[Dict[str, Any]], photo_configs: Optional[Dict[str, Any]] = None, selected_indices: Optional[Set[int]] = None):
         self.configured_items = configured_items
@@ -99,41 +106,42 @@ class PhotoKioskApp(ctk.CTk):
             self.session_photo_configs = photo_configs
         if selected_indices is not None:
             self.session_selected_indices = set(selected_indices)
+        # Remember which size cards the user set up, so "back" from the summary keeps them
+        sizes: List[str] = []
+        for cfg in self.session_photo_configs.values():
+            for card in cfg.get("cards", []):
+                if card["size_name"] not in sizes:
+                    sizes.append(card["size_name"])
+        self.session_card_sizes = sizes or None
         self.show_order_summary_screen()
 
     def show_order_summary_screen(self):
-        self._clear_container()
-        screen = OrderSummaryScreen(
+        self._show_screen(lambda: OrderSummaryScreen(
             self.container,
             items=self.configured_items,
             on_back=self.show_gallery_screen,
-            on_confirm_order=self._on_confirm_order
-        )
-        screen.pack(fill="both", expand=True)
+            on_confirm_order=self._on_confirm_order,
+        ))
 
     def _on_confirm_order(self, confirmed_items: List[Dict[str, Any]]):
-        self._clear_container()
-        screen = ProcessingScreen(
+        self._show_screen(lambda: ProcessingScreen(
             self.container,
             items=confirmed_items,
             on_completed=self._on_order_completed,
-            on_error=self._on_order_error
-        )
-        screen.pack(fill="both", expand=True)
+            on_error=self._on_order_error,
+        ))
 
     def _on_order_completed(self, order_id: str, total_prints: int):
         # Clean temp session folder after successful session
         clean_temp_session_dir(self.current_session_id)
         self.current_session_id += 1
 
-        self._clear_container()
-        screen = CompletionScreen(
+        self._show_screen(lambda: CompletionScreen(
             self.container,
             order_id=order_id,
             total_prints=total_prints,
-            on_done=self.show_home_screen
-        )
-        screen.pack(fill="both", expand=True)
+            on_done=self.show_home_screen,
+        ))
 
     def _on_order_error(self, error_message: str):
         # Return to summary with notification

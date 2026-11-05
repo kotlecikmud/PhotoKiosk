@@ -1,5 +1,22 @@
 # PhotoKiosk Changelog
 
+## [0.0.6] - 2026-11-05
+
+### Changed
+- **Gallery thumbnails keep their original aspect ratio**: photos are laid out in justified rows (portrait and landscape side by side) instead of fixed square/4:3 boxes; density 4 / 8 / 16 sets the target photos per row. Tile sizes follow real image dimensions (read from file headers in the background).
+- **Flicker-free gallery**: the thumbnail grid is a single virtualised canvas; selecting a photo, changing a count or moving the active outline updates only the affected canvas items. Density, resize and filter changes re-layout in one repaint and keep scroll position.
+- **Persistent editor widgets**: print-size cards, crop-mode controls and header are created once and updated in place with diffed `configure()` calls. Changing a quantity no longer rebuilds the editor or re-renders the preview; language switches relabel widgets instead of rebuilding screens.
+- **Faster, cached preview**: debounced, off-thread rendering with a result cache (switching size cards is instant) and a down-scaled source cache; the previous image stays visible until the new one is ready; fixed-height preview area prevents layout jumps.
+- **Flicker-free navigation**: the next screen is built and shown before the previous one is destroyed. Chosen print sizes are remembered when returning from the order summary.
+- **Thumbnail pipeline**: worker pool with viewport priority and cancellation (was one thread per thumbnail), JPEG draft decoding, unique temp files + atomic replace, thumbnail bounds part of the cache key (default 320 px), thread-safe UI hand-off.
+
+### Added
+- `gui/layout.py` (pure justified-layout engine), `gui/services/` (`order_draft`, `preview_service`, `thumbnail_loader`, `staging`, `ui_bridge`), `gui/widgets/` (`photo_grid`, `size_cards`).
+- Tests: `tests/test_layout.py`, `tests/test_order_draft.py` (no display needed), `tests/test_gui_gallery_flicker_free.py` (Xvfb).
+
+### Fixed
+- `gallery.py` referenced `Tuple` without importing it.
+
 ## [0.0.5] - 2026-11-03
 
 ### Changed
