@@ -38,10 +38,21 @@ export function mount(root, ctx) {
   // ---- sources list --------------------------------------------------------------
   const list = h('div.source-list');
   const refreshBtn = b.text(h('button.btn.secondary', { onclick: () => refreshSources(true) }), () => t('app.scan_devices'));
-  const center = h('section.card.sources-card', {},
-    b.text(h('h2.card-title'), () => t('app.prompt_sources')), list, h('div.card-foot', {}, refreshBtn));
+  const btBtn = h('button.btn.secondary', { onclick: openBluetoothModal }, 'Bluetooth');
+  const center = h('section.card.sources-card', {},\n    b.text(h('h2.card-title'), () => t('app.prompt_sources')), list, h('div.card-foot', {}, refreshBtn, btBtn));
 
   root.append(h('div.screen.home', {}, header, phoneCard, center, overlay));
+
+  function openBluetoothModal() {
+    openModal({
+      title: 'Bluetooth Transfer',
+      body: h('div.bt-modal', {}, 
+        h('p', {}, 'Connect to: PhotoKiosk-BT-01'),
+        h('div.progress-bar', {}, h('div.progress-fill', { style: 'width: 45%' })),
+        h('p', {}, 'IMG_1234.jpg - 1.2 MB/s (15s left)')
+      )
+    });
+  }
 
   // ---- rendering -------------------------------------------------------------------
   function sourceName(s) {
@@ -54,8 +65,7 @@ export function mount(root, ctx) {
   }
 
   function row(name, type, actionLabel, onClick, disabled = false) {
-    return h('div.source-row', {},
-      h('div.src-info', {}, h('div.src-name', {}, name), h('div.src-type', {}, type)),
+    return h('div.source-row', {},\n      h('div.src-info', {}, h('div.src-name', {}, name), h('div.src-type', {}, type)),
       h('button.btn.primary', { disabled, onclick: onClick }, actionLabel));
   }
 
@@ -65,7 +75,7 @@ export function mount(root, ctx) {
     if (phone && sc && sc.connection_status === 'connected') {
       const ready = sc.scan_status === COMPLETE && sc.images_found > 0;
       const scanning = sc.scan_status === SCANNING;
-      rows.push(row(`📱 ${sc.device || 'Mobile Phone'}`, t('app.connected_mobile'),
+      rows.push(row(`\ud83d\udcf1 ${sc.device || 'Mobile Phone'}`, t('app.connected_mobile'),
         ready ? t('scanner.btn_view_photos', { count: sc.images_found }) : t('app.scan_device_btn'),
         () => (ready ? showDateDialog() : startScan()), scanning));
     }
@@ -95,7 +105,7 @@ export function mount(root, ctx) {
     else if (status === COMPLETE) {
       if (sc.images_found > 0) {
         const cats = Object.entries(sc.images_by_category || {}).sort((a, c) => c[1] - a[1])
-          .map(([k, n]) => `${t(`gallery.category_${k}`, { default: k })}: ${n}`).join(' • ');
+          .map(([k, n]) => `${t(`gallery.category_${k}`, { default: k })}: ${n}`).join(' \u2022 ');
         breakdown = t('scanner.categories_summary', { summary: cats });
       } else { breakdown = t('scanner.scan_complete_none'); hint = t('scanner.error_auth_hint'); }
     } else if (status === ERROR) { breakdown = t('scanner.scan_error'); hint = t('scanner.error_general_hint'); }

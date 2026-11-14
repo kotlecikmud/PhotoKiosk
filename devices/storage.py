@@ -83,13 +83,29 @@ class StorageManager:
         if sys.platform == "win32":
             # Scan drive letters A-Z for removable drives
             import string
+            import ctypes
             for letter in string.ascii_uppercase:
                 root = f"{letter}:\\"
                 if os.path.exists(root):
                     dtype = StorageManager.get_windows_drive_type(root)
                     if dtype == DRIVE_REMOVABLE:
+                        # Try to get volume label for friendly name
+                        volume_name = ctypes.create_unicode_buffer(1024)
+                        file_sys_name = ctypes.create_unicode_buffer(1024)
+                        serial_number = ctypes.c_ulong(0)
+                        max_component_len = ctypes.c_ulong(0)
+                        file_sys_flags = ctypes.c_ulong(0)
+                        
+                        success = ctypes.windll.kernel32.GetVolumeInformationW(
+                            root, volume_name, 1024, ctypes.byref(serial_number), 
+                            ctypes.byref(max_component_len), ctypes.byref(file_sys_flags), 
+                            file_sys_name, 1024
+                        )
+                        
+                        name = volume_name.value if success and volume_name.value else f"USB Drive ({letter}:)"
+                        
                         detected.append({
-                            "name": f"USB Drive ({letter}:)",
+                            "name": name,
                             "path": root,
                             "type": "removable_storage",
                         })

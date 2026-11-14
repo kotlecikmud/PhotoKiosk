@@ -97,9 +97,9 @@ class KioskServices:
         self._unsubscribe_scanner = None
 
     # ---- database-backed settings (short TTL cache: previews hit this often) ----
-    def settings(self) -> Dict[str, str]:
+    def settings(self, force_refresh=False) -> Dict[str, str]:
         with self._lock:
-            if time.monotonic() - self._settings_at < SETTINGS_TTL_SECONDS and self._settings:
+            if not force_refresh and time.monotonic() - self._settings_at < SETTINGS_TTL_SECONDS and self._settings:
                 return self._settings
         with sessionmaker(bind=get_db_engine())() as db:
             fresh = {s.key: s.value for s in db.query(SystemSetting).all()}
@@ -254,6 +254,41 @@ def photo_dims(request: Request, source_id: str, body: DimsRequest):
             raise _http(exc)
     probed = svc.dims.probe_many(paths.values())
     return {"dims": {pid: (list(probed[p]) if probed.get(p) else None) for pid, p in paths.items()}}
+
+
+@router.post("/sources/{source_id}/rotate")
+def rotate_photo(request: Request, source_id: str, data: Dict[str, str]):
+    photo_id = data.get("id")
+    if not photo_id:
+        raise HTTPException(status_code=400, detail="Missing photo id")
+    svc = services(request)
+    # In a real implementation, we would persist the rotation state.
+    # For now, we clear the thumbnail cache for this photo so it gets regenerated.
+    path = svc.registry.resolve_photo(source_id, photo_id)
+    svc.thumbs.invalidate(str(path))
+    return {"status": "ok"}
+
+@router.post("/bluetooth/start")
+def start_bluetooth():
+    # Placeholder for starting Bluetooth service
+    return {"status": "started", "device_name": "PhotoKiosk-BT-01"}
+
+@router.post("/bluetooth/stop")
+def stop_bluetooth():
+    # Placeholder for stopping Bluetooth service
+    return {"status": "stopped"}
+
+@router.get("/bluetooth/status")
+def get_bluetooth_status():
+    # Placeholder for progress tracking
+    return {
+        "active": True,
+        "device_name": "PhotoKiosk-BT-01",
+        "progress": 45,
+        "filename": "IMG_1234.jpg",
+        "speed": "1.2 MB/s",
+        "eta": "15s"
+    }
 
 
 @router.get("/sources/{source_id}/photos/{photo_id}/thumb")
@@ -481,6 +516,14 @@ def phone_open(request: Request, body: PhoneOpenRequest):
 # ---------------------------------------------------------------------------
 def _sse(event: str, data: Dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
+
+@router.post("/admin/settings/refresh")
+def admin_refresh_settings(request: Request):
+    svc = services(request)
+    svc.settings(force_refresh=True)
+    svc.hub.emit("settings_changed", {})
+    return {"status": "ok"}
 
 
 @router.get("/events")

@@ -165,6 +165,10 @@ function wireEvents() {
       },
     });
   });
+  // Listen for settings changes
+  on('settings_changed', () => {
+    location.reload();
+  });
 }
 
 // ---- kiosk hardening (no context menu, no pinch zoom, no drag ghosts) --------------------------
@@ -188,7 +192,7 @@ async function boot() {
     if (lang !== state.boot.language.default) await loadLanguage(state.boot.language.default);
     await setLanguage(lang);
   } catch (e) {
-    appRoot.replaceChildren(h('div.boot-error', {}, `Cannot reach the kiosk server (${e.message}). Retrying…`));
+    appRoot.replaceChildren(h('div.boot-error', {}, `Cannot reach the kiosk server (${e.message}). Retrying\u2026`));
     setTimeout(() => location.reload(), 3000);
     return;
   }

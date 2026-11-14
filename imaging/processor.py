@@ -7,6 +7,8 @@ from typing import Optional, Dict, Any, Tuple
 from pathlib import Path
 from PIL import Image, ImageOps
 import io
+import pillow_heif
+pillow_heif.register_heif_opener()
 
 from imaging.dpi import (
     DEFAULT_DPI,
