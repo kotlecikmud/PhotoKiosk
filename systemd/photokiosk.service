@@ -1,5 +1,5 @@
 [Unit]
-Description=PhotoKiosk Fullscreen Touchscreen GUI
+Description=PhotoKiosk Fullscreen Touchscreen UI (web kiosk in a browser)
 After=photokiosk-backend.service graphical.target
 Wants=photokiosk-backend.service
 
@@ -9,8 +9,12 @@ User=kiosk
 Group=kiosk
 WorkingDirectory=/opt/photokiosk
 Environment="DISPLAY=:0"
+Environment="HOME=/home/kiosk"
 Environment="PYTHONPATH=/opt/photokiosk"
-ExecStart=/opt/photokiosk/venv/bin/python3 main.py --mode gui --fullscreen
+# Waits for the backend, opens http://127.0.0.1:8080/ in a fullscreen Chromium/Chrome/Edge/Firefox
+# and stays alive while the browser runs, so systemd restarts it if it is closed or crashes.
+# Use a specific browser with:  Environment="KIOSK_BROWSER=/usr/bin/google-chrome-stable"
+ExecStart=/opt/photokiosk/venv/bin/python3 main.py --mode kiosk --fullscreen
 Restart=always
 RestartSec=5
 StandardOutput=journal

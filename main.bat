@@ -16,6 +16,6 @@ exit /b 1
 
 REM Run app using venv
 "%VENV_PYTHON%" main.py
-// "%VENV_PYTHON%" main.py --mode gui --fullscreen
+REM Fullscreen kiosk browser: "%VENV_PYTHON%" main.py --fullscreen
 
 pause

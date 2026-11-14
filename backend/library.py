@@ -2,7 +2,7 @@
 import os
 import time
 from pathlib import Path
-from typing import List, Dict, Any, Callable, Optional, Set
+from typing import List, Dict, Any, Callable, Optional, Set, Tuple
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
@@ -22,10 +22,11 @@ def is_supported_image(filepath: Path) -> bool:
     return filepath.is_file() and filepath.suffix.lower() in SUPPORTED_EXTENSIONS
 
 
-def scan_directory_for_photos(directory_path: str) -> List[Dict[str, Any]]:
+def scan_directory_for_photos(directory_path: str, skip_top_level: Tuple[str, ...] = ()) -> List[Dict[str, Any]]:
     """
     Recursively scans directory for supported photo files, skipping cache/trash directories
-    and attaching source & album categorization.
+    and attaching source & album categorization. ``skip_top_level`` names directories directly
+    under ``directory_path`` that must not be scanned (e.g. the shared folder's ``orders``).
     """
     base = Path(directory_path)
     if not base.exists():
@@ -35,9 +36,11 @@ def scan_directory_for_photos(directory_path: str) -> List[Dict[str, Any]]:
     try:
         for root, dirs, files in os.walk(str(base.resolve())):
             # Prune unwanted directories in-place for fast traversal
+            at_top = os.path.samefile(root, base)
             dirs[:] = [
                 d for d in dirs
                 if d.lower() not in SKIP_DIRS and not (d.startswith(".") and d not in {".", ".."})
+                and not (at_top and d.lower() in skip_top_level)
             ]
 
             for fname in files:

@@ -22,7 +22,7 @@ from admin.auth import (
     record_successful_login,
     is_rate_limited,
 )
-from gui.theme import THEMES, get_theme_colors, set_active_theme
+from backend.theme import THEMES, get_theme_colors
 
 from backend.i18n import get_i18n, t
 
@@ -516,9 +516,6 @@ async def update_settings(
         else:
             db.add(SystemSetting(key=k, value=v))
     db.commit()
-
-    # Also update in-process active theme for GUI
-    set_active_theme(ui_theme)
 
     return RedirectResponse(url="/admin/settings", status_code=303)
 

@@ -15,7 +15,7 @@ import random
 import string
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Callable, List, Dict, Any, Optional, Tuple
 from sqlalchemy.orm import Session
 
 from backend.database import Order, OrderItem, PrintSize, SystemSetting
@@ -61,7 +61,8 @@ class OrderProcessor:
         items: List[Dict[str, Any]],
         default_dpi: float = DEFAULT_DPI,
         border_width_mm: float = 4.0,
-        auto_orientation: bool = True
+        auto_orientation: bool = True,
+        progress: Optional[Callable[[int, int], None]] = None,
     ) -> str:
         """
         Creates, processes, and finalizes an order atomically.
@@ -117,6 +118,8 @@ class OrderProcessor:
             copied_originals_map: Dict[str, str] = {}  # source_filepath -> staged_filename
 
             for item_idx, item_req in enumerate(items):
+                if progress:
+                    progress(item_idx, len(items))
                 src_path = Path(item_req["source_filepath"])
                 if not src_path.exists():
                     raise FileNotFoundError(f"Source photo not found: {src_path}")
@@ -206,6 +209,9 @@ class OrderProcessor:
                     status="COMPLETED",
                 )
                 db.add(db_item)
+
+            if progress:
+                progress(len(items), len(items))
 
             # Write manifest
             manifest["status"] = "COMPLETED"

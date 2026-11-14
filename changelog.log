@@ -1,5 +1,29 @@
 # PhotoKiosk Changelog
 
+## [Unreleased] - Web kiosk UI (replaces the Tkinter GUI)
+
+### Changed
+- The touchscreen interface is now a web app served by the backend at `/` and shown in a fullscreen browser.
+  Removed the `gui/` package and the `customtkinter` dependency. `--mode gui` is a deprecated alias of `--mode kiosk`.
+- Single process: the device monitor, phone scanner and folder watcher now run inside the backend, so the UI
+  receives live events (device plugged in, phone-scan progress, new files in the shared folder) over Server-Sent Events.
+- Order submission shows real progress (background job) instead of a fake progress bar and is protected against double taps.
+- Selected photos are staged on the server as soon as they are chosen and orders use the staged copy, so a USB stick can
+  be unplugged before submitting. Staged files can no longer collide when two photos share a file name.
+- The print preview now uses the admin's border width and orientation-matching settings (it previously used fixed values).
+- "Select all" applies to the photos of the current category filter.
+- Going back to the source list with an order in progress asks for confirmation.
+- Order summary text is fully localised (the totals and "Qty" labels were English-only).
+
+### Added
+- New browser-facing API `/api/v1/kiosk/*`. The browser never sees file paths: sources and photos use opaque ids that
+  are resolved (and path-traversal checked) on the server; prices are computed on the server.
+- Selection survives an accidental page reload; idle timeout (`kiosk.auto_reset_timeout_seconds`) with a warning countdown.
+- `web/tests`: Node tests for the layout engine (parity with the Python original), order-draft rules and i18n.
+
+### Fixed
+- The shared-folder gallery listed the `orders/` folder, exposing earlier customers' photos to the next customer.
+
 ## [0.0.6] - 2026-11-05
 
 ### Changed

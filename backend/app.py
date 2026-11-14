@@ -1,17 +1,27 @@
-"""FastAPI Application Factory for PhotoKiosk."""
-import os
+"""FastAPI Application Factory for PhotoKiosk (REST API, web kiosk UI and web admin)."""
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
-from backend.database import init_database, get_db_engine
+from backend.database import init_database
 from backend.orders import recover_incomplete_orders
 from backend.api import api_router
-from backend.library import PhotoLibraryWatcher
+from backend.kiosk_api import KioskServices, router as kiosk_router
+from backend.web import static_files, web_router
 from admin.routes import admin_router
 from sqlalchemy.orm import sessionmaker
 
-watcher: PhotoLibraryWatcher = None
+
+class _GZip(GZipMiddleware):
+    """GZip for JSON, but never for the SSE stream (compression would buffer live events)."""
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["path"].endswith("/kiosk/events"):
+            await self.app(scope, receive, send)
+        else:
+            await super().__call__(scope, receive, send)
 
 
 @asynccontextmanager
@@ -28,18 +38,12 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
 
-    # Start filesystem watcher on storage/shared directory
-    global watcher
-    shared_dir = os.path.abspath("storage/shared")
-    os.makedirs(shared_dir, exist_ok=True)
-    watcher = PhotoLibraryWatcher(shared_dir)
-    watcher.start()
+    # Device monitor, scanner events and the shared-folder watcher feed the browser via SSE
+    app.state.kiosk.start(asyncio.get_running_loop())
 
     yield
 
-    # Shutdown: stop filesystem observer
-    if watcher:
-        watcher.stop()
+    app.state.kiosk.stop()
 
 
 def create_app() -> FastAPI:
@@ -56,9 +60,16 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # Photo lists can be large JSON documents; text/event-stream is never compressed.
+    app.add_middleware(_GZip, minimum_size=1024)
+
+    app.state.kiosk = KioskServices()
 
     app.include_router(api_router)
+    app.include_router(kiosk_router)
     app.include_router(admin_router)
+    app.include_router(web_router)
+    app.mount("/static", static_files(), name="static")
 
     return app
 

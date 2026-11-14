@@ -6,10 +6,10 @@ PhotoKiosk is an appliance-grade photo ordering, image processing, and local fil
 
 ## Key Features
 
-1. **Touchscreen Interface (CustomTkinter)**
-   - High-contrast, large touch targets (64px buttons, clear typography).
-   - Dynamic device detection modal dialogs with debounce filtering.
-   - Asynchronous thumbnail browser with progressive background loading.
+1. **Touchscreen Interface (web app in a fullscreen browser)**
+   - High-contrast, large touch targets, themed from the admin panel; responsive from 1024x768 up.
+   - Live device detection (USB, discs, phones) pushed to the UI - no manual refresh needed.
+   - Virtualised thumbnail grid that stays smooth with thousands of photos.
    - Individual & batch print configuration.
    - Live visual transformation preview matching final print output.
 
@@ -48,10 +48,16 @@ PhotoKiosk is an appliance-grade photo ordering, image processing, and local fil
 
 - **Operating System**: Ubuntu Server 24.04 LTS (minimal installation).
 - **Display Server**: Xorg with Openbox window manager (no desktop environment required).
+- **Browser**: Chromium, Chrome, Edge or Firefox (auto-detected) shows the kiosk UI in fullscreen.
 - **Python**: 3.12+
 - **Services**:
-  - `photokiosk-backend.service`: FastAPI web service & Admin GUI (`:8080`).
-  - `photokiosk.service`: CustomTkinter fullscreen touchscreen GUI.
+  - `photokiosk-backend.service`: FastAPI service (`:8080`) serving the **touchscreen kiosk UI** (`/`),
+    the **Admin panel** (`/admin`) and the REST API; it also runs the USB/phone device monitor.
+  - `photokiosk.service`: opens `http://127.0.0.1:8080/` in a fullscreen browser and restarts it if it closes.
+
+The kiosk UI is a dependency-free web app (`web/`: plain HTML/CSS/ES modules, **no Node or build step**).
+Order drafts live in the browser, so every tap is instant; the server only does the heavy work
+(thumbnails, print previews, order processing).
 
 ---
 
@@ -63,7 +69,9 @@ Run the idempotent installation script as root:
 sudo ./install.sh
 ```
 The script:
-- Installs necessary system packages (`xorg`, `openbox`, `samba`, `udisks2`, `libimobiledevice`, `jmtpfs`).
+- Installs necessary system packages (`xorg`, `openbox`, `samba`, `udisks2`, `libimobiledevice`, `jmtpfs`, `unclutter`)
+  and a browser if none is present. Ubuntu 24.04 ships Chromium only as a snap (`chromium-browser`); to use Google
+  Chrome instead, install its `.deb` and/or set `KIOSK_BROWSER=/usr/bin/google-chrome-stable` in the unit.
 - Sets up Python virtual environment and installs dependencies.
 - Generates a random administrative password and displays it once.
 - Configures Samba share template and deploys systemd service definitions.
@@ -72,17 +80,29 @@ The script:
 You can run the application directly from the command line:
 
 ```bash
-# Run both Backend and GUI concurrently:
-python3 main.py --mode all
+# Run the server and open the kiosk UI in a browser (closing the browser stops the server):
+python3 main.py --mode all              # add --fullscreen for true kiosk mode
 
-# Run only the Backend / Admin service:
+# Run only the server (kiosk UI at /, admin at /admin) - e.g. for development:
 python3 main.py --mode backend --port 8080
 
-# Run only the Touchscreen GUI:
-python3 main.py --mode gui --fullscreen
+# Open only the browser (server must already be running; this is what photokiosk.service does):
+python3 main.py --mode kiosk --fullscreen
+```
+The kiosk UI is also reachable from any browser at `http://<KIOSK_IP>:8080/` (handy for development on a laptop;
+device scanning and photo sources always belong to the machine the server runs on).
 
-# Development / Headless testing with virtual display:
-xvfb-run -a python3 -m pytest tests/ -v
+Environment variables: `KIOSK_BROWSER` (browser executable), `KIOSK_BROWSER_PROFILE` (browser profile folder,
+default `~/photokiosk-browser`).
+
+The idle timeout comes from `kiosk.auto_reset_timeout_seconds` in `config/settings.yaml` (default 60; `0` disables it):
+after that long without a touch on an order in progress, the customer sees a 20-second "Are you still there?"
+countdown before the selection is cleared for the next person.
+
+```bash
+# Tests (no display needed):
+PYTHONPATH=. python3 -m pytest tests/ -v
+cd web && node --test "tests/*.test.mjs"     # front-end logic (Node 20+)
 ```
 
 ---
@@ -103,5 +123,8 @@ http://<KIOSK_IP>:8080/admin
 
 Run the full automated test suite verifying geometry, 300 DPI math, EXIF 1–8 handling, ICC profiles, collisions, and recovery:
 ```bash
-PYTHONPATH=. xvfb-run -a pytest tests/ -v
+PYTHONPATH=. python3 -m pytest tests/ -v
+cd web && node --test "tests/*.test.mjs"
 ```
+The JS tests include a parity check of the gallery layout engine against fixtures produced by the original
+Python implementation.

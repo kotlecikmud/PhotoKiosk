@@ -36,7 +36,17 @@ if [ "$EUID" -eq 0 ]; then
         jmtpfs \
         libimobiledevice-utils \
         ifuse \
-        xvfb
+        unclutter
+
+    # The kiosk UI is a web page shown in a fullscreen browser. Ubuntu 24.04 only ships Chromium
+    # as a snap (installed through the chromium-browser package); skip if a browser is present.
+    if ! command -v chromium-browser >/dev/null && ! command -v chromium >/dev/null \
+       && ! command -v google-chrome >/dev/null && ! command -v google-chrome-stable >/dev/null \
+       && ! command -v microsoft-edge >/dev/null; then
+        echo "      Installing a browser for the kiosk UI (chromium-browser)..."
+        apt-get install -y chromium-browser || \
+            echo "WARNING: could not install a browser. Install Chromium/Chrome/Firefox yourself (see README)."
+    fi
 
     # Ensure dedicated kiosk user exists
     if ! id -u "$USER_NAME" >/dev/null 2>&1; then

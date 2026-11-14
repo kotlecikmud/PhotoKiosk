@@ -166,5 +166,26 @@
     "loaded_languages": "Loaded Languages",
     "integrity_errors_title": "Localization Integrity Warnings",
     "missing_keys_count": "{count} missing keys in '{lang}':"
+  },
+  "web": {
+    "ok": "OK",
+    "cancel": "Cancel",
+    "close": "Close",
+    "open": "Open",
+    "discard": "Discard",
+    "leave_title": "Leave this order?",
+    "leave_message": "Your current selection ({count} prints) will be discarded.",
+    "reconnecting": "Connection to the kiosk server lost. Reconnecting…",
+    "new_photos": "New photos available – tap to refresh",
+    "device_removed": "A device was removed.",
+    "idle_title": "Are you still there?",
+    "idle_message": "Your selection will be cleared in {seconds} s.",
+    "idle_stay": "I'm still here",
+    "no_sources": "No photo sources are available.",
+    "preparing_photos": "Preparing your photos…",
+    "order_failed": "Order failed",
+    "processing_progress": "Processing {done} of {total} photos…",
+    "source_gone": "This photo source is no longer available.",
+    "preview_failed": "Could not load the preview."
   }
 }

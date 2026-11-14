@@ -166,5 +166,26 @@
     "loaded_languages": "Dostępne języki",
     "integrity_errors_title": "Błędy integralności plików językowych",
     "missing_keys_count": "{count} brakujących kluczy w '{lang}':"
+  },
+  "web": {
+    "ok": "OK",
+    "cancel": "Anuluj",
+    "close": "Zamknij",
+    "open": "Otwórz",
+    "discard": "Odrzuć",
+    "leave_title": "Opuścić to zamówienie?",
+    "leave_message": "Twój wybór ({count} odbitek) zostanie odrzucony.",
+    "reconnecting": "Utracono połączenie z serwerem kiosku. Łączenie…",
+    "new_photos": "Dostępne nowe zdjęcia – dotknij, aby odświeżyć",
+    "device_removed": "Urządzenie zostało odłączone.",
+    "idle_title": "Czy nadal tu jesteś?",
+    "idle_message": "Twój wybór zostanie wyczyszczony za {seconds} s.",
+    "idle_stay": "Nadal tu jestem",
+    "no_sources": "Brak dostępnych źródeł zdjęć.",
+    "preparing_photos": "Przygotowywanie zdjęć…",
+    "order_failed": "Zamówienie nie powiodło się",
+    "processing_progress": "Przetwarzanie {done} z {total} zdjęć…",
+    "source_gone": "To źródło zdjęć nie jest już dostępne.",
+    "preview_failed": "Nie udało się wczytać podglądu."
   }
 }

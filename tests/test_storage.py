@@ -107,7 +107,6 @@ def test_admin_login_and_protection(api_client):
     assert "0.0.2" in changelog_p.read_text()
 
     # Test theme switching
-    from gui.theme import THEMES, set_active_theme, COLORS
-    set_active_theme("emerald_green")
-    assert COLORS["primary"] == THEMES["emerald_green"]["primary"]
-    set_active_theme("midnight_blue")
+    from backend.theme import THEMES, get_theme_colors
+    assert get_theme_colors("emerald_green")["primary"] == THEMES["emerald_green"]["primary"]
+    assert get_theme_colors("no_such_theme") == THEMES["midnight_blue"]

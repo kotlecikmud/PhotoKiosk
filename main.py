@@ -203,9 +203,11 @@ def main():
     list_parser.add_argument("--pending", action="store_true", help="List only pending/processing orders")
 
     # Standard server / kiosk flags
-    parser.add_argument("--mode", choices=["all", "gui", "backend"], default="all",
-                        help="Run mode: 'gui' for kiosk interface, 'backend' for API/Admin, 'all' for both.")
-    parser.add_argument("--fullscreen", action="store_true", help="Launch GUI in fullscreen mode.")
+    parser.add_argument("--mode", choices=["all", "backend", "kiosk", "gui"], default="all",
+                        help="'backend': API + web kiosk + admin only; 'kiosk': open the kiosk UI in a "
+                             "full-screen browser (backend must be running); 'all': both (default). "
+                             "'gui' is a deprecated alias of 'kiosk'.")
+    parser.add_argument("--fullscreen", action="store_true", help="Open the browser in kiosk (fullscreen) mode.")
     parser.add_argument("--host", default="0.0.0.0", help="Backend bind address (default: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=8080, help="Backend bind port (default: 8080)")
 
@@ -229,34 +231,57 @@ def main():
     # Ensure database is initialized
     init_database()
 
-    if args.mode == "backend":
-        print(f"Starting PhotoKiosk Backend & Admin service on http://{args.host}:{args.port}")
+    ui_url = f"http://127.0.0.1:{args.port}/"
+    mode = "kiosk" if args.mode == "gui" else args.mode
+    if args.mode == "gui":
+        print("Note: --mode gui is deprecated (the Tk interface was replaced by the web UI); using --mode kiosk.")
+
+    if mode == "backend":
+        print(f"Starting PhotoKiosk on http://{args.host}:{args.port} (kiosk UI at /, admin at /admin)")
         uvicorn.run("backend.app:app", host=args.host, port=args.port, reload=False)
 
-    elif args.mode == "gui":
-        print("Launching PhotoKiosk Touchscreen Interface...")
-        from gui.app import run_gui
-        run_gui(fullscreen=args.fullscreen)
+    elif mode == "kiosk":
+        run_browser_only(ui_url, args.fullscreen)
 
-    elif args.mode == "all":
-        import multiprocessing
-        print(f"Starting PhotoKiosk Backend on port {args.port}...")
-        backend_proc = multiprocessing.Process(
-            target=uvicorn.run,
-            args=("backend.app:app",),
-            kwargs={"host": args.host, "port": args.port, "reload": False},
-            daemon=True
-        )
-        backend_proc.start()
+    elif mode == "all":
+        run_server_and_browser(args, ui_url)
 
-        print("Launching PhotoKiosk GUI...")
-        from gui.app import run_gui
-        try:
-            run_gui(fullscreen=args.fullscreen)
-        finally:
-            if backend_proc.is_alive():
-                backend_proc.terminate()
-                backend_proc.join()
+
+def run_browser_only(ui_url: str, fullscreen: bool) -> None:
+    """Opens the kiosk UI and blocks until the browser exits (so systemd can restart it)."""
+    from backend import kiosk_browser
+    print(f"Waiting for the backend at {ui_url} ...")
+    if not kiosk_browser.wait_for_server(ui_url):
+        print("Backend did not come up in time.")
+        sys.exit(1)
+    proc = kiosk_browser.launch(ui_url, fullscreen)
+    if proc is None:
+        sys.exit(1)
+    sys.exit(proc.wait())
+
+
+def run_server_and_browser(args, ui_url: str) -> None:
+    """Runs the backend in this process and the browser next to it; closing the browser stops both."""
+    import threading
+    import time
+    from backend import kiosk_browser
+
+    server = uvicorn.Server(uvicorn.Config("backend.app:app", host=args.host, port=args.port, reload=False))
+
+    def browser_thread():
+        if not kiosk_browser.wait_for_server(ui_url):
+            return
+        started = time.time()
+        proc = kiosk_browser.launch(ui_url, args.fullscreen)
+        if proc is not None:
+            proc.wait()
+            # A browser that hands over to an already-running instance exits at once: keep serving.
+            if time.time() - started > 5:
+                server.should_exit = True
+
+    print(f"Starting PhotoKiosk on port {args.port}; opening the kiosk UI in a browser...")
+    threading.Thread(target=browser_thread, daemon=True).start()
+    server.run()
 
 
 if __name__ == "__main__":
