@@ -47,14 +47,6 @@ def health_check():
     return {"status": "ok", "service": "PhotoKiosk Backend"}
 
 
-@api_router.post("/admin/settings/refresh")
-def refresh_settings():
-    # This endpoint is called by the admin panel when settings are saved.
-    # We can use the event hub to notify the kiosk to refresh its settings.
-    # For now, we'll just return success.
-    return {"status": "ok"}
-
-
 @api_router.get("/print-sizes", response_model=List[PrintSizeSchema])
 def get_active_print_sizes(db: Session = Depends(get_db)):
     """Returns active print sizes for kiosk touch display."""

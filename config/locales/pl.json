@@ -177,7 +177,6 @@
     "leave_message": "Twój wybór ({count} odbitek) zostanie odrzucony.",
     "reconnecting": "Utracono połączenie z serwerem kiosku. Łączenie…",
     "new_photos": "Dostępne nowe zdjęcia – dotknij, aby odświeżyć",
-    "device_removed": "Urządzenie zostało odłączone.",
     "idle_title": "Czy nadal tu jesteś?",
     "idle_message": "Twój wybór zostanie wyczyszczony za {seconds} s.",
     "idle_stay": "Nadal tu jestem",
@@ -186,6 +185,28 @@
     "order_failed": "Zamówienie nie powiodło się",
     "processing_progress": "Przetwarzanie {done} z {total} zdjęć…",
     "source_gone": "To źródło zdjęć nie jest już dostępne.",
-    "preview_failed": "Nie udało się wczytać podglądu."
+    "preview_failed": "Nie udało się wczytać podglądu.",
+    "unnamed_usb": "Pendrive",
+    "unnamed_disc": "Płyta",
+    "source_connected": "Podłączono: {name}",
+    "source_removed": "Używane źródło zdjęć zostało odłączone."
+  },
+  "bluetooth": {
+    "title": "Wyślij zdjęcia przez Bluetooth",
+    "row_title": "Bluetooth",
+    "row_type": "Wyślij zdjęcia z telefonu („{name}”)",
+    "source_type": "Zdjęcia wysłane z telefonu",
+    "btn_receive": "Odbierz zdjęcia",
+    "device_name_lbl": "Wyszukaj to urządzenie w telefonie:",
+    "step1": "Włącz Bluetooth w telefonie.",
+    "step2": "Otwórz galerię, zaznacz zdjęcia i wybierz Udostępnij → Bluetooth.",
+    "step3": "Wybierz „{name}”. Jeśli telefon poprosi o sparowanie, zaakceptuj.",
+    "waiting": "Oczekiwanie na zdjęcia…",
+    "received": "Odebrano: {count}",
+    "receiving": "Odbieranie {name}…",
+    "sender": "Od: {sender}",
+    "btn_continue": "Kontynuuj ({count}) →",
+    "btn_back": "← Wstecz",
+    "unavailable": "Bluetooth nie jest dostępny w tym kiosku."
   }
 }

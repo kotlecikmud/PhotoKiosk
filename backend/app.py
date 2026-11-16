@@ -9,6 +9,7 @@ from backend.database import init_database
 from backend.orders import recover_incomplete_orders
 from backend.api import api_router
 from backend.kiosk_api import KioskServices, router as kiosk_router
+from backend.live_config import AdminChangeNotifier
 from backend.web import static_files, web_router
 from admin.routes import admin_router
 from sqlalchemy.orm import sessionmaker
@@ -62,6 +63,7 @@ def create_app() -> FastAPI:
     )
     # Photo lists can be large JSON documents; text/event-stream is never compressed.
     app.add_middleware(_GZip, minimum_size=1024)
+    app.add_middleware(AdminChangeNotifier)
 
     app.state.kiosk = KioskServices()
 

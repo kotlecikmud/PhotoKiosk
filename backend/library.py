@@ -9,7 +9,7 @@ from watchdog.events import FileSystemEventHandler
 from backend.thumbnails import ThumbnailCache
 from devices.classifier import classify_media
 
-SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp", ".heic", ".heif"}
+SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp"}
 
 # Directory names to skip for fast scanning
 SKIP_DIRS = {

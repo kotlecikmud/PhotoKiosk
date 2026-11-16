@@ -23,7 +23,7 @@ export function connect(expectedBootId) {
     emit('connection', true);
     emit('scanner', data.scanner);
   });
-  for (const name of ['scanner', 'device', 'library']) {
+  for (const name of ['scanner', 'device', 'library', 'sources', 'config', 'bluetooth']) {
     es.addEventListener(name, (e) => emit(name, JSON.parse(e.data)));
   }
   es.onerror = () => emit('connection', false);

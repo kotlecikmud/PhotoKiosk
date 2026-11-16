@@ -15,13 +15,29 @@
 - Going back to the source list with an order in progress asks for confirmation.
 - Order summary text is fully localised (the totals and "Qty" labels were English-only).
 
-### Added
+### Added (live updates, device names, Bluetooth)
+- Bluetooth receiving on **Windows**: the kiosk hosts the OBEX Object Push service itself (`backend/obex.py` is a
+  complete, hardware-independent OBEX server; `backend/bluetooth_windows.py` connects it to Windows RFCOMM sockets).
+  Files are refused up front when nobody is receiving, when they are not pictures, or when too large. Standalone
+  self-test: `python -m backend.bluetooth_windows`.
+- Bluetooth receiving (Linux/BlueZ): customers send photos from a phone; private per-customer sessions that are wiped
+  when the customer finishes. Admin toggle + visible device name + diagnostics. Needs `bluez`, `bluez-obexd`.
+- Settings saved in the Admin panel (theme, language, prices, sizes, finishes, sources...) reach every kiosk screen
+  within a second, without a reload and without losing the customer's order.
+- Live source list: a background watcher notices USB sticks / discs / drive letters and pushes the new list to the UI.
+  On Linux it also mounts freshly plugged-in removable partitions (headless servers have no desktop to do it).
+- Friendly source names: volume label, vendor/model and size (`HOLIDAY`, `SanDisk Cruzer Blade - 29.8 GB`,
+  `KINGSTON (E:)`) instead of "USB / Removable (USB Drive (D:))".
 - New browser-facing API `/api/v1/kiosk/*`. The browser never sees file paths: sources and photos use opaque ids that
   are resolved (and path-traversal checked) on the server; prices are computed on the server.
 - Selection survives an accidental page reload; idle timeout (`kiosk.auto_reset_timeout_seconds`) with a warning countdown.
 - `web/tests`: Node tests for the layout engine (parity with the Python original), order-draft rules and i18n.
 
 ### Fixed
+- The *System Language* dropdown in the admin settings was never saved (the form field was ignored by the server).
+- Linux: USB sticks were never detected on a headless server unless the optional `pyudev` package happened to be
+  installed (now in requirements, and the live watcher works without it). Two sticks under `/media/<user>/` were merged
+  into one source named after the user.
 - The shared-folder gallery listed the `orders/` folder, exposing earlier customers' photos to the next customer.
 
 ## [0.0.6] - 2026-11-05

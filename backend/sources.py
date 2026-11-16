@@ -27,6 +27,7 @@ KIND_SHARED = "shared"
 KIND_REMOVABLE = "removable"
 KIND_OPTICAL = "optical"
 KIND_PHONE = "phone"
+KIND_BLUETOOTH = "bluetooth"
 
 SHARED_SOURCE_ID = "shared"
 # Finished orders are mirrored into <shared>/orders for LAN access. They belong to earlier
@@ -34,6 +35,7 @@ SHARED_SOURCE_ID = "shared"
 SHARED_RESERVED_DIRS = ("orders",)
 _ID_CHARS_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _PHONE_ID_RE = re.compile(r"^phone-(\d{1,9})$")
+_BT_ID_RE = re.compile(r"^bt-([0-9a-f]{12})$")
 
 DEFAULT_ENABLED = {
     "source_iphone": True,
@@ -62,6 +64,14 @@ class Source:
     kind: str
     label: str
     root: Path
+    device: str = ""   # vendor + model of a removable device ("SanDisk Cruzer")
+    drive: str = ""    # Windows drive letter ("E:")
+    size: int = 0      # capacity in bytes (0 = unknown)
+
+
+def source_to_dict(s: "Source") -> Dict[str, Any]:
+    """Browser-safe description of a source (never contains the real path)."""
+    return {"id": s.id, "kind": s.kind, "label": s.label, "device": s.device, "drive": s.drive, "size": s.size}
 
 
 def encode_photo_id(rel_path: str) -> str:
@@ -116,6 +126,8 @@ class SourceRegistry:
         self._enabled_provider = enabled_provider or (lambda: dict(DEFAULT_ENABLED))
         self._lock = threading.RLock()
         self._sources: Dict[str, Source] = {}
+        # set by the Bluetooth receiver: session id -> folder of the active session (or None)
+        self.bluetooth_root: Optional[Callable[[str], Optional[Path]]] = None
 
     # ------------------------------------------------------------------
     # Discovery
@@ -152,7 +164,8 @@ class SourceRegistry:
                 if os.path.normcase(path) in seen_paths:
                     continue
                 seen_paths.add(os.path.normcase(path))
-                optical.append(Source(_hash_id("disc", path), KIND_OPTICAL, dev["name"], Path(path)))
+                optical.append(Source(_hash_id("disc", path), KIND_OPTICAL, dev.get("label", ""), Path(path),
+                                      dev.get("device", ""), dev.get("drive", ""), int(dev.get("size", 0))))
 
         removable: List[Source] = []
         if flags["source_removable"]:
@@ -161,14 +174,15 @@ class SourceRegistry:
                 if os.path.normcase(path) in seen_paths:
                     continue
                 seen_paths.add(os.path.normcase(path))
-                removable.append(Source(_hash_id("usb", path), KIND_REMOVABLE, dev["name"], Path(path)))
+                removable.append(Source(_hash_id("usb", path), KIND_REMOVABLE, dev.get("label", ""), Path(path),
+                                        dev.get("device", ""), dev.get("drive", ""), int(dev.get("size", 0))))
 
         found.extend(removable)
         found.extend(optical)
 
         with self._lock:
             # Keep phone sessions registered; replace everything else with the fresh view.
-            kept = {k: v for k, v in self._sources.items() if v.kind == KIND_PHONE}
+            kept = {k: v for k, v in self._sources.items() if v.kind in (KIND_PHONE, KIND_BLUETOOTH)}
             self._sources = {s.id: s for s in found}
             self._sources.update(kept)
         return found
@@ -183,6 +197,17 @@ class SourceRegistry:
             self._sources[src.id] = src
         return src
 
+    def register_bluetooth_session(self, session_id: str, root: Path, label: str = "Bluetooth") -> Source:
+        """Exposes the received-photos folder of one Bluetooth session as a source (``bt-<id>``)."""
+        src = Source(f"bt-{session_id}", KIND_BLUETOOTH, label, Path(root).resolve())
+        with self._lock:
+            self._sources[src.id] = src
+        return src
+
+    def forget(self, source_id: str) -> None:
+        with self._lock:
+            self._sources.pop(source_id, None)
+
     # ------------------------------------------------------------------
     # Lookup
     # ------------------------------------------------------------------
@@ -191,8 +216,12 @@ class SourceRegistry:
             src = self._sources.get(source_id)
         if src is None:
             m = _PHONE_ID_RE.match(source_id or "")
+            bt = _BT_ID_RE.match(source_id or "")
             if m:
                 src = self.register_phone_session(int(m.group(1)), "")
+            elif bt:
+                root = self.bluetooth_root(bt.group(1)) if self.bluetooth_root else None
+                src = self.register_bluetooth_session(bt.group(1), root) if root else None
             else:
                 self.discover()  # e.g. after a restart, or a stick plugged in meanwhile
                 with self._lock:

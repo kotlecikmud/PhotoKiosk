@@ -25,6 +25,7 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import sessionmaker
 
+from backend.bluetooth import BluetoothReceiver, BluetoothUnavailable
 from backend.catalog import PrintCatalog
 from backend.database import SystemSetting, get_db_engine
 from backend.events import Debouncer, EventHub, slim_scanner_state
@@ -33,7 +34,8 @@ from backend.jobs import OrderJobs
 from backend.library import PhotoLibraryWatcher
 from backend.orders import OrderProcessor
 from backend.photo_cache import DimsCache, PreviewRenderer
-from backend.sources import DEFAULT_ENABLED, SourceError, SourceNotFound, SourceRegistry
+from backend.source_watch import SourceWatcher
+from backend.sources import DEFAULT_ENABLED, SourceError, SourceNotFound, SourceRegistry, source_to_dict
 from backend.staging import CartStager
 from backend.theme import get_theme_colors, resolve_theme_key
 from backend.thumbnails import ThumbnailCache
@@ -75,6 +77,7 @@ class KioskServices:
         temp_base: str = "storage/temp_sessions",
         thumbs_dir: str = "storage/thumbnails",
         orders_dir: str = "storage/orders",
+        bluetooth_dir: str = "storage/bluetooth",
     ):
         self.boot_id = secrets.token_hex(6)
         self.hub = EventHub()
@@ -89,6 +92,9 @@ class KioskServices:
         self.processor = OrderProcessor(orders_dir)
         self.shared_dir = shared_dir
         self.temp_base = temp_base
+        self.bluetooth = BluetoothReceiver(bluetooth_dir, publish=self.hub.publish)
+        self.registry.bluetooth_root = self.bluetooth.session_root
+        self.source_watcher = SourceWatcher(self.registry, self.hub.publish)
         self._settings: Dict[str, str] = {}
         self._settings_at = 0.0
         self._lock = threading.Lock()
@@ -97,9 +103,9 @@ class KioskServices:
         self._unsubscribe_scanner = None
 
     # ---- database-backed settings (short TTL cache: previews hit this often) ----
-    def settings(self, force_refresh=False) -> Dict[str, str]:
+    def settings(self) -> Dict[str, str]:
         with self._lock:
-            if not force_refresh and time.monotonic() - self._settings_at < SETTINGS_TTL_SECONDS and self._settings:
+            if time.monotonic() - self._settings_at < SETTINGS_TTL_SECONDS and self._settings:
                 return self._settings
         with sessionmaker(bind=get_db_engine())() as db:
             fresh = {s.key: s.value for s in db.query(SystemSetting).all()}
@@ -114,6 +120,21 @@ class KioskServices:
     def catalog(self) -> PrintCatalog:
         return PrintCatalog.load()
 
+    def apply_bluetooth_settings(self) -> None:
+        s = self.settings()
+        self.bluetooth.configure(s.get("source_bluetooth", "false").lower() == "true", s.get("bluetooth_name"))
+
+    def on_config_changed(self) -> None:
+        """The administrator saved something: apply it and tell every kiosk screen to refresh."""
+        with self._lock:
+            self._settings_at = 0.0           # next settings() call re-reads the database
+        try:
+            self.apply_bluetooth_settings()
+        except Exception:
+            logger.warning("could not apply bluetooth settings", exc_info=True)
+        self.source_watcher.poke()
+        self.hub.publish("config", {"at": time.time()})
+
     # ---- background services (started from the app lifespan) ----
     def start(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
         if loop is not None:
@@ -125,6 +146,11 @@ class KioskServices:
         )
         self._monitor = DeviceMonitorDaemon(self._on_device_event)
         self._monitor.start()
+        self.source_watcher.start()
+        try:
+            self.apply_bluetooth_settings()
+        except Exception:
+            logger.warning("could not start bluetooth", exc_info=True)
 
         shared = os.path.abspath(self.shared_dir)
         os.makedirs(shared, exist_ok=True)
@@ -135,6 +161,8 @@ class KioskServices:
     def stop(self) -> None:
         if self._unsubscribe_scanner:
             self._unsubscribe_scanner()
+        self.source_watcher.stop()
+        self.bluetooth.stop()
         if self._monitor:
             self._monitor.stop()
         if self._watcher:
@@ -146,6 +174,7 @@ class KioskServices:
             "type": details.get("type", ""),
             "device": details.get("device", ""),
         })
+        self.source_watcher.poke()           # list the new stick within a moment, not at the next poll
 
 
 def services(request: Request) -> KioskServices:
@@ -216,9 +245,11 @@ def _phone_summary(enabled: Dict[str, bool]) -> Optional[Dict[str, Any]]:
 def list_sources(request: Request):
     svc = services(request)
     sources = svc.registry.discover()
+    bt = svc.bluetooth.status()
     return {
-        "sources": [{"id": s.id, "kind": s.kind, "label": s.label} for s in sources],
+        "sources": [source_to_dict(s) for s in sources],
         "phone": _phone_summary(svc.registry.enabled_flags()),
+        "bluetooth": {"enabled": bt["enabled"], "available": bt["available"], "name": bt["name"]},
     }
 
 
@@ -254,41 +285,6 @@ def photo_dims(request: Request, source_id: str, body: DimsRequest):
             raise _http(exc)
     probed = svc.dims.probe_many(paths.values())
     return {"dims": {pid: (list(probed[p]) if probed.get(p) else None) for pid, p in paths.items()}}
-
-
-@router.post("/sources/{source_id}/rotate")
-def rotate_photo(request: Request, source_id: str, data: Dict[str, str]):
-    photo_id = data.get("id")
-    if not photo_id:
-        raise HTTPException(status_code=400, detail="Missing photo id")
-    svc = services(request)
-    # In a real implementation, we would persist the rotation state.
-    # For now, we clear the thumbnail cache for this photo so it gets regenerated.
-    path = svc.registry.resolve_photo(source_id, photo_id)
-    svc.thumbs.invalidate(str(path))
-    return {"status": "ok"}
-
-@router.post("/bluetooth/start")
-def start_bluetooth():
-    # Placeholder for starting Bluetooth service
-    return {"status": "started", "device_name": "PhotoKiosk-BT-01"}
-
-@router.post("/bluetooth/stop")
-def stop_bluetooth():
-    # Placeholder for stopping Bluetooth service
-    return {"status": "stopped"}
-
-@router.get("/bluetooth/status")
-def get_bluetooth_status():
-    # Placeholder for progress tracking
-    return {
-        "active": True,
-        "device_name": "PhotoKiosk-BT-01",
-        "progress": 45,
-        "filename": "IMG_1234.jpg",
-        "speed": "1.2 MB/s",
-        "eta": "15s"
-    }
 
 
 @router.get("/sources/{source_id}/photos/{photo_id}/thumb")
@@ -512,18 +508,35 @@ def phone_open(request: Request, body: PhoneOpenRequest):
 
 
 # ---------------------------------------------------------------------------
+# Bluetooth (photos sent from a phone)
+# ---------------------------------------------------------------------------
+@router.get("/bluetooth")
+def bluetooth_status(request: Request):
+    return services(request).bluetooth.status()
+
+
+@router.post("/bluetooth/session")
+def bluetooth_open(request: Request):
+    """Starts a fresh, empty receive session for the current customer."""
+    try:
+        return services(request).bluetooth.open_session()
+    except BluetoothUnavailable as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@router.delete("/bluetooth/session/{session_id}", status_code=204)
+def bluetooth_close(request: Request, session_id: str):
+    svc = services(request)
+    svc.bluetooth.close_session(session_id)
+    svc.registry.forget(f"bt-{session_id}")
+    return Response(status_code=204)
+
+
+# ---------------------------------------------------------------------------
 # Live events (Server-Sent Events)
 # ---------------------------------------------------------------------------
 def _sse(event: str, data: Dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
-
-
-@router.post("/admin/settings/refresh")
-def admin_refresh_settings(request: Request):
-    svc = services(request)
-    svc.settings(force_refresh=True)
-    svc.hub.emit("settings_changed", {})
-    return {"status": "ok"}
 
 
 @router.get("/events")

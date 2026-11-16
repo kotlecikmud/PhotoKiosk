@@ -71,6 +71,9 @@ export function stagePhotos(pids) { pids.forEach((p) => { pending.remove.delete(
 export function unstagePhotos(pids) { pids.forEach((p) => { pending.add.delete(p); pending.remove.add(p); }); flushStaging(); }
 
 export function discardCart() {
+  if (state.source && state.source.kind === 'bluetooth') {      // the received photos belong to this customer only
+    fetch(`${API}/bluetooth/session/${state.source.id.replace(/^bt-/, '')}`, { method: 'DELETE', keepalive: true }).catch(() => {});
+  }
   const id = state.cartId;
   fetch(`${API}/carts/${id}`, { method: 'DELETE', keepalive: true }).catch(() => {});
 }

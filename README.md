@@ -128,3 +128,41 @@ cd web && node --test "tests/*.test.mjs"
 ```
 The JS tests include a parity check of the gallery layout engine against fixtures produced by the original
 Python implementation.
+
+## Live behaviour, device names and Bluetooth
+
+**Settings apply instantly.** Anything saved in the Admin panel (theme, language, prices, print sizes, paper
+finishes, border width, which sources are enabled, Bluetooth) is pushed to every kiosk screen within a second.
+The page is not reloaded and a customer's open order is kept; items that no longer exist are dropped from it.
+The *Active System Language* dropdown is the kiosk's default language (customers can still switch it).
+
+**Sources are detected live.** Plugging in or removing a USB stick, SD card or disc updates the list within
+~2 seconds and highlights the new entry. On Linux, unmounted removable partitions are mounted automatically
+(`udisksctl`; the installer adds a polkit rule for the kiosk user), and drives are listed by their own
+name, e.g. `HOLIDAY` / `SanDisk Cruzer Blade · 29.8 GB`, or `KINGSTON (E:)` on Windows.
+
+**Bluetooth (Linux and Windows).** Enable it under *Admin > Settings > Sources*. A customer taps *Bluetooth* on the
+start screen, sends photos from the phone (*Share > Bluetooth > the kiosk's name*) and watches them arrive live. Every
+customer gets a fresh, private session; photos that arrive outside a session, and anything that is not a real picture,
+are refused or deleted, and the session is wiped when the customer finishes.
+
+- **Linux:** `bluetoothctl` runs as a "just works" pairing agent and makes the adapter discoverable; BlueZ's `obexd`
+  (package `bluez-obexd`) receives the files. Needs `bluez`, `bluez-obexd`, an adapter and the `kiosk` user in the
+  `bluetooth` group (all done by `install.sh`). The name phones see is the one set in the admin panel.
+- **Windows:** Windows has no ready-made receiver, so the kiosk hosts the standard *OBEX Object Push* service itself
+  (Windows RFCOMM sockets + the OBEX server in `backend/obex.py`) and makes the PC discoverable while it runs. Needs
+  Windows 10 (1703+) or 11, a Bluetooth adapter that is switched on, and Python 3.11+ (`pip install -r requirements.txt`
+  installs the `winrt-*` packages). Phones see the PC under its **computer name** (Windows Settings > System > About >
+  Rename this PC). The phone is told immediately if a file is refused (nobody is receiving, not a picture, too big).
+  **Try it first, outside the kiosk:** `python -m backend.bluetooth_windows`, then send a photo from a phone.
+- The admin settings page shows whether Bluetooth is ready and, if not, why.
+- Without either, set `KIOSK_BLUETOOTH_INBOX=<folder>` to only *watch* a folder that another receiver writes into.
+
+First-time check on a Linux kiosk (needs real hardware):
+```bash
+bluetoothctl show              # adapter present, Powered: yes
+/usr/libexec/bluetooth/obexd --help   # the receiver is installed
+journalctl -u photokiosk-backend -f   # then send a photo from a phone
+```
+Security note: while Bluetooth is enabled the kiosk is discoverable and accepts pictures without a PIN, like a public printer.
+Turn it off in the admin panel when it is not needed.

@@ -27,6 +27,17 @@ export async function loadLanguage(code) {
   return code;
 }
 
+export function setAvailableLanguages(languages) { available = languages; }
+
+// Re-reads the current dictionary (locale files may have been edited); notifies only if it changed.
+export async function refreshStrings() {
+  const fresh = (await getJSON(`/api/v1/kiosk/i18n/${current}`)).strings;
+  if (JSON.stringify(fresh) !== JSON.stringify(dicts[current])) {
+    dicts[current] = fresh;
+    listeners.forEach((fn) => fn(current));
+  }
+}
+
 export function initI18n(languages, code) {
   available = languages;
   current = code;

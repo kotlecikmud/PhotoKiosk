@@ -371,6 +371,7 @@ async def settings_page(request: Request, db: Session = Depends(get_db)):
             "locale_names": i18n_mgr.locale_names,
             "integrity_errors": integrity_errs,
             "system_language": current_system_lang,
+            "bluetooth": request.app.state.kiosk.bluetooth.status() | request.app.state.kiosk.bluetooth.diagnostics(),
             "success_msg": success_msg,
             "error_msg": error_msg,
         },
@@ -492,12 +493,26 @@ async def update_settings(
     source_removable: Optional[str] = Form(None),
     source_cddvd: Optional[str] = Form(None),
     source_network: Optional[str] = Form(None),
+    source_bluetooth: Optional[str] = Form(None),
+    bluetooth_name: Optional[str] = Form(None),
+    system_language: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     if not get_current_admin(request):
         return RedirectResponse(url="/admin/login", status_code=303)
 
+    from backend.bluetooth import sanitize_name
+    # The form always offered a language dropdown, but the value used to be silently dropped.
+    if system_language and system_language in get_i18n().get_available_languages():
+        s = db.query(SystemSetting).filter_by(key="system_language").first()
+        if s:
+            s.value = system_language
+        else:
+            db.add(SystemSetting(key="system_language", value=system_language))
+
     settings_to_update = [
+        ("source_bluetooth", "true" if source_bluetooth == "true" else "false"),
+        ("bluetooth_name", sanitize_name(bluetooth_name)),
         ("default_dpi", default_dpi),
         ("border_width_mm", border_width_mm),
         ("auto_orientation_matching", auto_orientation_matching),

@@ -27,6 +27,26 @@ export class OrderDraft {
   }
 
   sizeNames() { return this.catalog.sizes.map((s) => s.name); }
+
+  // The administrator changed sizes / finishes / prices while a customer is mid-order:
+  // drop what no longer exists, keep everything else.
+  updateCatalog(catalog) {
+    this.catalog = catalog;
+    const sizes = new Set(this.sizeNames());
+    const finishes = catalog.finishes;
+    this.defaultFinish = finishes[0] || 'GLOSSY';
+    this.sessionCardSizes = this.sessionCardSizes.filter((s) => sizes.has(s));
+    if (!this.sessionCardSizes.length) this.sessionCardSizes = this.sizeNames().slice(0, 2);
+    for (const [pid, cfg] of Object.entries(this.configs)) {
+      cfg.cards = cfg.cards.filter((c) => sizes.has(c.size_name));
+      for (const c of cfg.cards) {
+        if (!finishes.some((f) => f.toUpperCase() === c.paper_type.toUpperCase())) c.paper_type = this.defaultFinish;
+      }
+      if (!cfg.cards.length) this.activeCard[pid] = 0;
+      else if ((this.activeCard[pid] ?? 0) >= cfg.cards.length) this.activeCard[pid] = 0;
+      this._autoDeselectIfEmpty(pid);
+    }
+  }
   price(size, finish) { return this.catalog.prices[priceKey(size, finish)] || 0; }
 
   setPhotos(photos) {

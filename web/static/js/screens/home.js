@@ -5,13 +5,16 @@ import { on } from '../events.js';
 import { t } from '../i18n.js';
 import { languageToggle } from '../components/lang-toggle.js';
 import { openModal, toast } from '../components/dialogs.js';
+import { describeSource } from '../sources.js';
 import { state } from '../store.js';
 
 const SCANNING = 'SCANNING', COMPLETE = 'COMPLETE', ERROR = 'ERROR';
 
 export function mount(root, ctx) {
   const b = new Binder();
-  let sources = [], phone = null, destroyed = false, dateDialog = null, busy = null;
+  let sources = [], phone = null, bt = null, destroyed = false, dateDialog = null, busy = null;
+  const fresh = new Set();     // ids of sources that just appeared (highlighted for a moment)
+  let known = null;
 
   // ---- header ----------------------------------------------------------------
   const title = b.text(h('h1.hero-title'), () => t('app.title'));
@@ -38,34 +41,15 @@ export function mount(root, ctx) {
   // ---- sources list --------------------------------------------------------------
   const list = h('div.source-list');
   const refreshBtn = b.text(h('button.btn.secondary', { onclick: () => refreshSources(true) }), () => t('app.scan_devices'));
-  const btBtn = h('button.btn.secondary', { onclick: openBluetoothModal }, 'Bluetooth');
-  const center = h('section.card.sources-card', {},\n    b.text(h('h2.card-title'), () => t('app.prompt_sources')), list, h('div.card-foot', {}, refreshBtn, btBtn));
+  const center = h('section.card.sources-card', {},
+    b.text(h('h2.card-title'), () => t('app.prompt_sources')), list, h('div.card-foot', {}, refreshBtn));
 
   root.append(h('div.screen.home', {}, header, phoneCard, center, overlay));
 
-  function openBluetoothModal() {
-    openModal({
-      title: 'Bluetooth Transfer',
-      body: h('div.bt-modal', {}, 
-        h('p', {}, 'Connect to: PhotoKiosk-BT-01'),
-        h('div.progress-bar', {}, h('div.progress-fill', { style: 'width: 45%' })),
-        h('p', {}, 'IMG_1234.jpg - 1.2 MB/s (15s left)')
-      )
-    });
-  }
-
   // ---- rendering -------------------------------------------------------------------
-  function sourceName(s) {
-    if (s.kind === 'shared') return t('app.network_shared');
-    if (s.kind === 'removable') return t('app.usb_removable', { name: s.label });
-    return s.label;
-  }
-  function sourceType(s) {
-    return t({ shared: 'app.server_storage', removable: 'app.removable_media', optical: 'app.optical_media' }[s.kind]);
-  }
-
-  function row(name, type, actionLabel, onClick, disabled = false) {
-    return h('div.source-row', {},\n      h('div.src-info', {}, h('div.src-name', {}, name), h('div.src-type', {}, type)),
+  function row(name, type, actionLabel, onClick, { disabled = false, isNew = false } = {}) {
+    return h('div.source-row' + (isNew ? '.new' : ''), {},
+      h('div.src-info', {}, h('div.src-name', {}, name), h('div.src-type', {}, type)),
       h('button.btn.primary', { disabled, onclick: onClick }, actionLabel));
   }
 
@@ -75,12 +59,30 @@ export function mount(root, ctx) {
     if (phone && sc && sc.connection_status === 'connected') {
       const ready = sc.scan_status === COMPLETE && sc.images_found > 0;
       const scanning = sc.scan_status === SCANNING;
-      rows.push(row(`\ud83d\udcf1 ${sc.device || 'Mobile Phone'}`, t('app.connected_mobile'),
+      rows.push(row(`📱 ${sc.device || 'Mobile Phone'}`, t('app.connected_mobile'),
         ready ? t('scanner.btn_view_photos', { count: sc.images_found }) : t('app.scan_device_btn'),
-        () => (ready ? showDateDialog() : startScan()), scanning));
+        () => (ready ? showDateDialog() : startScan()), { disabled: scanning }));
     }
-    for (const s of sources) rows.push(row(sourceName(s), sourceType(s), t('app.look_here'), () => ctx.openSource(s)));
+    if (bt && bt.enabled && bt.available) {
+      rows.push(row(`📶 ${t('bluetooth.row_title')}`, t('bluetooth.row_type', { name: bt.name }),
+        t('bluetooth.btn_receive'), () => ctx.navigate('bluetooth')));
+    }
+    for (const s of sources) {
+      const d = describeSource(s);
+      rows.push(row(d.title, d.subtitle, t('app.look_here'), () => ctx.openSource(s), { isNew: fresh.has(s.id) }));
+    }
     list.replaceChildren(...(rows.length ? rows : [h('div.empty', {}, t('web.no_sources'))]));
+  }
+
+  // A new list arrived (live event or manual refresh): highlight what is new.
+  function setSources(next) {
+    if (known) for (const s of next) if (!known.has(s.id)) {
+      fresh.add(s.id);
+      setTimeout(() => { fresh.delete(s.id); renderList(); }, 3000);
+    }
+    known = new Set(next.map((s) => s.id));
+    sources = next;
+    renderList();
   }
 
   function renderScanner() {
@@ -105,7 +107,7 @@ export function mount(root, ctx) {
     else if (status === COMPLETE) {
       if (sc.images_found > 0) {
         const cats = Object.entries(sc.images_by_category || {}).sort((a, c) => c[1] - a[1])
-          .map(([k, n]) => `${t(`gallery.category_${k}`, { default: k })}: ${n}`).join(' \u2022 ');
+          .map(([k, n]) => `${t(`gallery.category_${k}`, { default: k })}: ${n}`).join(' • ');
         breakdown = t('scanner.categories_summary', { summary: cats });
       } else { breakdown = t('scanner.scan_complete_none'); hint = t('scanner.error_auth_hint'); }
     } else if (status === ERROR) { breakdown = t('scanner.scan_error'); hint = t('scanner.error_general_hint'); }
@@ -132,10 +134,11 @@ export function mount(root, ctx) {
     try {
       const data = await getJSON(`${API}/sources`);
       if (destroyed) return;
-      sources = data.sources;
       phone = data.phone;
+      bt = data.bluetooth;
       if (phone) state.scanner = phone;
-      renderList(); renderScanner();
+      setSources(data.sources);
+      renderScanner();
     } catch (e) { if (manual) toast(e.message, { kind: 'error' }); }
   }
 
@@ -174,7 +177,10 @@ export function mount(root, ctx) {
       phone = s.connection_status === 'connected' ? (phone || s) : null;
       renderList(); renderScanner();
     }),
-    on('device', () => refreshSources()),
+    on('sources', (e) => setSources(e.sources)),                // USB stick / disc plugged in or removed
+    on('device', () => refreshSources()),                       // phone connected
+    on('config', () => refreshSources()),                       // administrator toggled a source
+    on('bluetooth', (st) => { bt = { enabled: st.enabled, available: st.available, name: st.name }; renderList(); }),
     ctx.onLanguage(() => { b.refresh(); renderList(); renderScanner(); }),
   ];
   state.scanner && (phone = state.scanner.connection_status === 'connected' ? state.scanner : null);

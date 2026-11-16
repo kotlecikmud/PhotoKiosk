@@ -1,7 +1,9 @@
 // Kiosk bootstrap: load config + language, then run a tiny hash router between the screens.
 import { API, getJSON, sendJSON } from './api.js';
 import { connect, on } from './events.js';
-import { getLanguage, initI18n, loadLanguage, onLanguageChange, setLanguage, t } from './i18n.js';
+import { getLanguage, initI18n, loadLanguage, onLanguageChange, refreshStrings, setAvailableLanguages, setLanguage, t } from './i18n.js';
+import { applyTheme } from './theme.js';
+import { describeSource } from './sources.js';
 import { debounce, uid } from './dom.js';
 import { confirmDialog, openModal, toast } from './components/dialogs.js';
 import { discardCart, hasDraft, newDraft, restoreSession, saveSession, state } from './store.js';
@@ -9,6 +11,7 @@ import { h } from './dom.js';
 import * as home from './screens/home.js';
 import * as gallery from './screens/gallery.js';
 import * as summary from './screens/summary.js';
+import * as bluetooth from './screens/bluetooth.js';
 import { mountDone, mountProcessing } from './screens/processing.js';
 
 const appRoot = document.getElementById('app');
@@ -19,6 +22,7 @@ const ROUTES = {
   sources: (root, ctx) => home.mount(root, ctx),
   gallery: (root, ctx) => gallery.mount(root, ctx),
   summary: (root, ctx) => summary.mount(root, ctx),
+  bluetooth: (root, ctx) => bluetooth.mount(root, ctx),
   processing: (root, ctx) => mountProcessing(root, ctx),
   done: (root, ctx) => mountDone(root, ctx),
 };
@@ -119,7 +123,7 @@ function startIdleWatch(seconds) {
   ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach((ev) => window.addEventListener(ev, touch, { passive: true, capture: true }));
 
   const dismiss = () => { clearInterval(tick); warning && warning.close(); warning = null; };
-  const hasSomethingToLose = () => ['gallery', 'summary'].includes(routeName()) || hasDraft();
+  const hasSomethingToLose = () => ['gallery', 'summary', 'bluetooth'].includes(routeName()) || hasDraft();
 
   setInterval(() => {
     const name = routeName();
@@ -150,25 +154,68 @@ function wireEvents() {
     if (!up && !banner) { banner = h('div.conn-banner', {}, t('web.reconnecting')); document.body.append(banner); }
     if (up && banner) { banner.remove(); banner = null; }
   });
+  // A phone was plugged in (USB sticks / discs arrive through the "sources" event below).
   on('device', (d) => {
-    if (d.action === 'removed') { toast(t('web.device_removed')); return; }
-    if (d.action !== 'connected' && d.action !== 'mounted') return;
-    if (routeName() === 'sources') { toast(t('app.device_detected_title')); return; }
-    toast(t('app.device_detected_title'), {
-      actionLabel: t('web.open'), ms: 12000,
-      onAction: async () => {
-        if (hasDraft() && !(await confirmDialog({
-          title: t('web.leave_title'), message: t('web.leave_message', { count: state.draft.totalPrints() }),
-          confirmLabel: t('web.discard'), danger: true,
-        }))) return;
-        ctx.resetToSources();
-      },
-    });
+    if (d.action !== 'connected' || routeName() === 'sources') return;
+    toast(t('app.device_detected_title'), { actionLabel: t('web.open'), ms: 12000, onAction: leaveToSources });
   });
-  // Listen for settings changes
-  on('settings_changed', () => {
-    location.reload();
+
+  // The list of sources changed (stick plugged in / removed): tell the customer if it matters.
+  on('sources', ({ sources }) => {
+    const now = new Set(sources.map((s) => s.id));
+    if (knownSources) {
+      const added = sources.filter((s) => !knownSources.has(s.id));
+      if (added.length && routeName() !== 'sources' && routeName() !== 'processing' && routeName() !== 'done') {
+        toast(t('web.source_connected', { name: describeSource(added[0]).title }), {
+          actionLabel: t('web.open'), ms: 12000, onAction: leaveToSources,
+        });
+      }
+      const cur = state.source;
+      if (cur && ['removable', 'optical'].includes(cur.kind) && !now.has(cur.id)) toast(t('web.source_removed'), { kind: 'error', ms: 9000 });
+    }
+    knownSources = now;
   });
+
+  // The administrator saved something: theme, language, prices, sources ... apply it right now.
+  on('config', debounce(refreshConfig, 250));
+}
+
+let knownSources = null;
+
+async function leaveToSources() {
+  if (hasDraft() && !(await confirmDialog({
+    title: t('web.leave_title'), message: t('web.leave_message', { count: state.draft.totalPrints() }),
+    confirmLabel: t('web.discard'), danger: true,
+  }))) return;
+  ctx.resetToSources();
+}
+
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+async function refreshConfig() {
+  let next;
+  try { next = await getJSON(`${API}/bootstrap`); } catch (e) { return; }
+  const prev = state.boot;
+  if (!prev) return;
+  if (next.boot_id !== prev.boot_id) { location.reload(); return; }
+  state.boot = next;
+
+  if (!same(prev.theme, next.theme)) applyTheme(next.theme.colors);
+
+  if (!same(prev.language.available, next.language.available)) setAvailableLanguages(next.language.available);
+  const available = next.language.available.map((l) => l.code);
+  if (prev.language.default !== next.language.default && available.includes(next.language.default)) {
+    await setLanguage(next.language.default);                 // the administrator's choice applies at once
+  } else if (!available.includes(getLanguage())) {
+    await setLanguage(next.language.default);
+  } else {
+    try { await refreshStrings(); } catch (e) { /* keep current strings */ }
+  }
+
+  const catalogChanged = !same(prev.catalog, next.catalog);
+  if (catalogChanged && state.draft) { state.draft.updateCatalog(next.catalog); saveSession(); }
+  const needsRedraw = catalogChanged || !same(prev.settings, next.settings) || !same(prev.language.available, next.language.available);
+  if (needsRedraw && !['processing', 'done'].includes(routeName())) { current = null; render(); }
 }
 
 // ---- kiosk hardening (no context menu, no pinch zoom, no drag ghosts) --------------------------
@@ -192,12 +239,13 @@ async function boot() {
     if (lang !== state.boot.language.default) await loadLanguage(state.boot.language.default);
     await setLanguage(lang);
   } catch (e) {
-    appRoot.replaceChildren(h('div.boot-error', {}, `Cannot reach the kiosk server (${e.message}). Retrying\u2026`));
+    appRoot.replaceChildren(h('div.boot-error', {}, `Cannot reach the kiosk server (${e.message}). Retrying…`));
     setTimeout(() => location.reload(), 3000);
     return;
   }
   restoreSession();
   wireEvents();
+  try { knownSources = new Set((await getJSON(`${API}/sources`)).sources.map((x) => x.id)); } catch (e) { /* seeded by the first event */ }
   connect(state.boot.boot_id);
   startIdleWatch(state.boot.kiosk.auto_reset_seconds);
   render();

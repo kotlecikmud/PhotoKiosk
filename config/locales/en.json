@@ -177,7 +177,6 @@
     "leave_message": "Your current selection ({count} prints) will be discarded.",
     "reconnecting": "Connection to the kiosk server lost. Reconnecting…",
     "new_photos": "New photos available – tap to refresh",
-    "device_removed": "A device was removed.",
     "idle_title": "Are you still there?",
     "idle_message": "Your selection will be cleared in {seconds} s.",
     "idle_stay": "I'm still here",
@@ -186,6 +185,28 @@
     "order_failed": "Order failed",
     "processing_progress": "Processing {done} of {total} photos…",
     "source_gone": "This photo source is no longer available.",
-    "preview_failed": "Could not load the preview."
+    "preview_failed": "Could not load the preview.",
+    "unnamed_usb": "USB drive",
+    "unnamed_disc": "Disc",
+    "source_connected": "{name} connected",
+    "source_removed": "The photo source you were using was removed."
+  },
+  "bluetooth": {
+    "title": "Send photos via Bluetooth",
+    "row_title": "Bluetooth",
+    "row_type": "Send photos from your phone (“{name}”)",
+    "source_type": "Photos sent from your phone",
+    "btn_receive": "Receive photos",
+    "device_name_lbl": "Look for this device on your phone:",
+    "step1": "Turn on Bluetooth on your phone.",
+    "step2": "Open your gallery, select photos and tap Share → Bluetooth.",
+    "step3": "Choose “{name}”. If your phone asks to pair, accept.",
+    "waiting": "Waiting for your photos…",
+    "received": "Received: {count}",
+    "receiving": "Receiving {name}…",
+    "sender": "From: {sender}",
+    "btn_continue": "Continue ({count}) →",
+    "btn_back": "← Back",
+    "unavailable": "Bluetooth is not available on this kiosk."
   }
 }

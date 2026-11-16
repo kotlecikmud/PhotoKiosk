@@ -8,6 +8,7 @@ import { confirmDialog, toast } from '../components/dialogs.js';
 import { PhotoGrid } from '../components/photo-grid.js';
 import { SizeCards } from '../components/size-cards.js';
 import { ThumbLoader } from '../loader.js';
+import { describeSource } from '../sources.js';
 import { hasDraft, saveSession, stagePhotos, state, unstagePhotos } from '../store.js';
 
 const DENSITIES = [4, 8, 16];
@@ -36,11 +37,7 @@ export function mount(root, ctx) {
   const proceedBtn = h('button.btn.success', { disabled: true, onclick: onProceed });
   const topbar = h('header.topbar', {}, backBtn, titleEl, selCount, densityBox, h('div.grow'), selAllBtn, languageToggle(), proceedBtn);
 
-  function sourceTitle() {
-    if (state.source.kind === 'shared') return t('app.network_shared');
-    if (state.source.kind === 'removable') return t('app.usb_removable', { name: state.source.label });
-    return state.source.label;
-  }
+  function sourceTitle() { return describeSource(state.source).title; }
 
   // ================================= left pane =======================================
   const chips = h('div.chips');
@@ -66,7 +63,6 @@ export function mount(root, ctx) {
   const caption = h('div.preview-caption');
   const previewImg = h('img.preview-img', { alt: '', draggable: 'false' });
   const previewArea = h('div.preview-area', {}, previewImg, h('div.spinner.preview-spin'));
-  const rotateBtn = h('button.btn.secondary.sm', { onclick: onRotate }, t('gallery.rotate'));
   const cropBtns = {};
   const cropBox = h('div.seg.crop', {}, CROP_MODES.map((m) => (cropBtns[m] = h('button.seg-btn', { type: 'button', onclick: () => onCrop(m) }))));
   const cardsEl = h('div.cards');
@@ -80,25 +76,12 @@ export function mount(root, ctx) {
   });
   const editor = h('div.editor', { hidden: true },
     h('div.ed-head', {}, h('div', {}, nameEl, metaEl), cbLabel),
-    h('div.viewport', {}, caption, previewArea, rotateBtn),
+    h('div.viewport', {}, caption, previewArea),
     h('div.ed-row', {}, b.text(h('span.ed-label'), () => `${t('gallery.crop_mode')}:`), cropBox),
     b.text(h('div.ed-label'), () => `${t('gallery.sizes_and_quantities')}:`), cardsEl);
   const right = h('section.pane.right', { onclick: (e) => { if (!e.target.closest('.popup, .size-add')) closePopup(); } }, placeholder, editor);
 
   root.append(h('div.screen.gallery', {}, topbar, h('div.gbody', {}, left, right)));
-
-  async function onRotate() {
-    if (!activePid) return;
-    const p = byId.get(activePid);
-    // Swap dimensions
-    [p.w, p.h] = [p.h, p.w];
-    // Notify backend to rotate
-    await sendJSON('POST', `${API}/sources/${encodeURIComponent(sid)}/rotate`, { id: activePid });
-    // Update UI
-    grid.setDims(new Map([[activePid, [p.w, p.h]]]));
-    grid.refresh();
-    requestPreview();
-  }
 
   // ================================= loading =========================================
   async function reload(keepActive = false) {

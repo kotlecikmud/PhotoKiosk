@@ -193,6 +193,28 @@
         <input type="checkbox" name="source_network" value="true" {% if settings.get('source_network', 'true') == 'true' %}checked{% endif %}>
         <span>Network / Shared Photos</span>
       </label>
+      <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+        <input type="checkbox" name="source_bluetooth" value="true" {% if settings.get('source_bluetooth', 'false') == 'true' %}checked{% endif %}>
+        <span>Bluetooth (customers send photos from their phone)</span>
+      </label>
+    </div>
+
+    <div class="form-group">
+      <label>Bluetooth name shown on phones <span style="opacity:.7;font-weight:normal">(Linux; Windows uses the computer name)</span></label>
+      <input type="text" name="bluetooth_name" maxlength="32" value="{{ settings.get('bluetooth_name', 'PhotoKiosk') }}">
+      <small style="display:block; margin-top:6px; opacity:.8;">
+        {% if bluetooth.mode == 'unavailable' %}
+          Not available on this machine: {{ bluetooth.reason }}
+        {% elif settings.get('source_bluetooth', 'false') != 'true' %}
+          Disabled. When enabled the kiosk becomes discoverable by nearby phones.
+        {% elif bluetooth.available and bluetooth.mode == 'windows' %}
+          Ready (Windows) - phones see this PC as "{{ bluetooth.name }}". To change that name: Windows Settings &gt; System &gt; About &gt; Rename this PC.
+        {% elif bluetooth.available %}
+          Ready ({{ bluetooth.mode }} mode) - phones see this kiosk as "{{ bluetooth.name }}".
+        {% else %}
+          Starting... {{ bluetooth.reason }}
+        {% endif %}
+      </small>
     </div>
 
     <button type="submit" style="margin-top: 12px;">Save Settings</button>

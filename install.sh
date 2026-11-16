@@ -36,7 +36,10 @@ if [ "$EUID" -eq 0 ]; then
         jmtpfs \
         libimobiledevice-utils \
         ifuse \
-        unclutter
+        unclutter \
+        bluez \
+        bluez-obexd \
+        dbus
 
     # The kiosk UI is a web page shown in a fullscreen browser. Ubuntu 24.04 only ships Chromium
     # as a snap (installed through the chromium-browser package); skip if a browser is present.
@@ -54,6 +57,21 @@ if [ "$EUID" -eq 0 ]; then
         useradd -m -s /bin/bash "$USER_NAME"
         usermod -aG video,plugdev,audio,dialout "$USER_NAME"
     fi
+
+    # Bluetooth: only members of the "bluetooth" group may talk to BlueZ over D-Bus
+    getent group bluetooth >/dev/null && usermod -aG bluetooth "$USER_NAME"
+
+    # Let the kiosk user mount USB sticks / discs headlessly (there is no desktop to do it)
+    mkdir -p /etc/polkit-1/rules.d
+    cat > /etc/polkit-1/rules.d/50-photokiosk-mount.rules <<POLKIT
+polkit.addRule(function(action, subject) {
+    if (subject.user == "$USER_NAME" &&
+        (action.id == "org.freedesktop.udisks2.filesystem-mount" ||
+         action.id == "org.freedesktop.udisks2.filesystem-mount-other-seat")) {
+        return polkit.Result.YES;
+    }
+});
+POLKIT
 else
     echo "Running in user mode without root privileges; skipping apt package installations."
 fi

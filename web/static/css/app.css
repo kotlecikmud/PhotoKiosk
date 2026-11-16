@@ -199,11 +199,29 @@ h1, h2, p { margin: 0; }
 @keyframes rise { from { transform: translateY(12px); opacity: 0; } }
 .conn-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 300; background: var(--danger); color: #fff; text-align: center; padding: .5rem; font-weight: 600; }
 
+/* ---------- bluetooth ---------- */
+.bluetooth .gt-title.always { display: block; }
+.bt-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1.2fr; gap: .8rem; padding: .8rem; }
+.bt-card { display: flex; flex-direction: column; gap: 1rem; min-height: 0; }
+.bt-hint { color: var(--muted); font-size: .9rem; }
+.bt-name { font-size: 2.2rem; font-weight: 800; color: var(--primary); letter-spacing: -.01em; word-break: break-word; }
+.bt-steps { margin: 0; padding-left: 1.3rem; display: grid; gap: .7rem; font-size: 1.05rem; line-height: 1.35; }
+.bt-error { padding: .8rem 1rem; border-radius: .7rem; background: rgba(239,68,68,.15); color: #f87171; }
+.bt-status { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.bt-count { font-size: 1.3rem; font-weight: 700; }
+.bt-progress, .bt-sender { color: var(--muted); font-size: .9rem; }
+.bt-thumbs { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr)); gap: .5rem; align-content: start; }
+.bt-thumb { aspect-ratio: 1; border-radius: .6rem; overflow: hidden; background: var(--bg); animation: pop .25s; }
+.bt-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+@keyframes pop { from { transform: scale(.6); opacity: 0; } }
+.source-row.new { animation: flash 3s ease-out; }
+@keyframes flash { 0%, 30% { background: var(--card-sel); border-color: var(--success); box-shadow: 0 0 0 3px var(--success); } }
+
 /* ---------- smaller screens: stack the gallery panes ---------- */
 @media (max-width: 1499px) { .gt-title { display: none; } }
 @media (max-width: 1099px) { .seg-label { display: none; } }
 @media (max-width: 899px) {
   .gbody { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 1.4fr); }
-  .sbody { grid-template-columns: 1fr; }
+  .sbody, .bt-body { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }

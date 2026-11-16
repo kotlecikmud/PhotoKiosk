@@ -75,3 +75,15 @@ test('stale persisted sizes that were deleted in the admin are ignored', () => {
   const d = new OrderDraft(catalog, { sessionCardSizes: ['9x13', 'gone'] });
   assert.deepEqual(d.sessionCardSizes, ['9x13']);
 });
+
+test('admin removes a size / finish mid-order: draft drops it, keeps the rest', () => {
+  const d = mk();
+  d.increment('a', 0); d.increment('a', 1); d.setPaper('a', 1, 'MATTE'); d.increment('b', 0);
+  d.updateCatalog({ sizes: [{ name: '10x15' }, { name: '15x21' }], finishes: ['GLOSSY'], prices: { '10x15|glossy': 2 } });
+  assert.deepEqual(d.cards('a').map((c) => c.size_name), ['10x15']);       // 9x13 is gone
+  assert.equal(d.cards('a')[0].paper_type, 'GLOSSY');                       // MATTE no longer exists
+  assert.ok(d.selected.has('a')); assert.equal(d.price('10x15', 'GLOSSY'), 2);
+  assert.ok(!d.selected.has('b'));                                          // its only card vanished -> deselected
+  assert.deepEqual(d.sessionCardSizes, ['10x15']);
+  assert.equal(d.activeCardIdx('a'), 0);
+});
